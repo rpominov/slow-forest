@@ -1,0 +1,19 @@
+{
+  "name": "slow-forest",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rpominov/slow-forest.git"
+  },
+  "authors": [
+    "Roman Pominov"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/rpominov/slow-forest/issues"
+  },
+  "homepage": "https://github.com/rpominov/slow-forest#readme"
+}
