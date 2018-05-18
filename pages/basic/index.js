@@ -1,8 +1,6 @@
 // @flow
 
 import * as React from "react"
-import Layout from "../misc/Layout"
-import delay from "../misc/delay"
 import Form from "../../slow-forest/Form"
 import * as submitResults from "../../slow-forest/submitResults"
 
@@ -30,44 +28,42 @@ function syncValidator(values) {
 }
 
 export default () => (
-  <Layout>
-    <Form
-      submitHandler={submitHandler}
-      syncValidator={syncValidator}
-      initialValues={{name: "", human: false, planet: "__unset__"}}
-      render={formAPI => (
-        <form onSubmit={formAPI.submitEventHandler}>
-          <TextField formAPI={formAPI} name="name" label="Name" />
+  <Form
+    submitHandler={submitHandler}
+    syncValidator={syncValidator}
+    initialValues={{name: "", human: false, planet: "__unset__"}}
+    render={formAPI => (
+      <form onSubmit={formAPI.submitEventHandler}>
+        <TextField formAPI={formAPI} name="name" label="Name" />
 
-          <RadioButtons
-            formAPI={formAPI}
-            name="pet"
-            label="Pet preference"
-            options={[
-              {value: "dog", label: "dogs"},
-              {value: "cat", label: "cats"},
-            ]}
-          />
+        <RadioButtons
+          formAPI={formAPI}
+          name="pet"
+          label="Pet preference"
+          options={[
+            {value: "dog", label: "dogs"},
+            {value: "cat", label: "cats"},
+          ]}
+        />
 
-          <Checkbox formAPI={formAPI} name="human" label="human" />
+        <Checkbox formAPI={formAPI} name="human" label="human" />
 
-          <Select
-            formAPI={formAPI}
-            name="planet"
-            label="Favorite planet"
-            options={[
-              {value: "__unset__", label: ""},
-              {value: "earth", label: "Earth"},
-              {value: "mars", label: "Mars"},
-              {value: "pluto", label: "Pluto"},
-            ]}
-          />
+        <Select
+          formAPI={formAPI}
+          name="planet"
+          label="Favorite planet"
+          options={[
+            {value: "__unset__", label: ""},
+            {value: "earth", label: "Earth"},
+            {value: "mars", label: "Mars"},
+            {value: "pluto", label: "Pluto"},
+          ]}
+        />
 
-          <Submit label="Submit" />
-        </form>
-      )}
-    />
-  </Layout>
+        <Submit label="Submit" />
+      </form>
+    )}
+  />
 )
 
 const TextField = props => {
