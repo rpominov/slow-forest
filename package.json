@@ -3,11 +3,14 @@
   "name": "slow-forest-dev",
   "scripts": {
     "test": "flow check && prettier --l $npm_package_prettierFiles",
-    "build-package": "npm run _cleanup && npm run _compile && npm run _copy-flow && npm run _copy-readme",
+    "build-package":
+      "npm run _cleanup && npm run _compile && npm run _copy-flow && npm run _copy-readme",
     "prettier": "prettier --write $npm_package_prettierFiles",
+    "gen-toc": "markdown-toc -i docs/api-reference.md",
     "_cleanup": "rm -f npm-package/*.{js,flow,md}",
     "_compile": "babel slow-forest -d npm-package",
-    "_copy-flow": "for x in `ls slow-forest/*.js`; do cp $x `echo $x | sed \"s/js$/js.flow/g;s/^slow-forest/npm-package/g\"`; done",
+    "_copy-flow":
+      "for x in `ls slow-forest/*.js`; do cp $x `echo $x | sed \"s/js$/js.flow/g;s/^slow-forest/npm-package/g\"`; done",
     "_copy-readme": "cp {,npm-package/}README.md"
   },
   "prettierFiles": "**/*.{babelrc,js,json,md}",
@@ -19,6 +22,7 @@
     "next": "^6.0.3",
     "prettier": "^1.12.1",
     "react": "^16.3.2",
-    "react-dom": "^16.3.2"
+    "react-dom": "^16.3.2",
+    "markdown-toc": "^1.2.0"
   }
 }
