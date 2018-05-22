@@ -6,18 +6,26 @@ import * as submitResults from "../../slow-forest/submitResults"
 
 function submitHandler(values, cb) {
   setTimeout(() => {
-    cb(submitResults.success(), () => undefined)
+    if (values.name === "") {
+      cb(
+        submitResults.failure([
+          {
+            field: "name",
+            message: "i told you",
+            meta: undefined,
+          },
+        ]),
+      )
+    } else {
+      cb(submitResults.success())
+    }
   }, 3000)
 }
 
 function syncValidator(values) {
   if (values.name === "") {
-    // TODO: need a contructor
-    // TODO: we don't want to specify source here
-    // TODO: meta should be optional
     return [
       {
-        source: "synchronous",
         field: "name",
         message: "name is required",
         meta: undefined,
@@ -30,7 +38,9 @@ function syncValidator(values) {
 export default () => (
   <Form
     submitHandler={submitHandler}
-    syncValidator={syncValidator}
+    validators={[
+      {tag: "synchronous", id: "0", fields: ["name"], validator: syncValidator},
+    ]}
     initialValues={{name: "", human: false, planet: "__unset__"}}
     render={formAPI => (
       <form onSubmit={formAPI.submitEventHandler}>

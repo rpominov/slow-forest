@@ -1,18 +1,16 @@
 // @flow
 
-import type {SubmitResult, FormErrorsWithoutSource} from "./types"
+import type {SubmitResult, FormError} from "./types"
 
-export function success<Meta>(meta: Meta): SubmitResult<Meta, empty> {
+export function success<SubmitMeta>(
+  meta: SubmitMeta,
+): SubmitResult<SubmitMeta, any> {
   return {tag: "success", meta}
 }
 
-export function failure<Meta, ErrorMeta>(
-  errors: FormErrorsWithoutSource<ErrorMeta>,
-  meta: Meta,
-): SubmitResult<Meta, ErrorMeta> {
-  return {
-    tag: "failure",
-    errors: errors.map(e => ({...e, source: "submit"})),
-    meta,
-  }
+export function failure<SubmitMeta, ErrorMeta>(
+  errors: $ReadOnlyArray<FormError<ErrorMeta>>,
+  meta: SubmitMeta,
+): SubmitResult<SubmitMeta, ErrorMeta> {
+  return {tag: "failure", errors, meta}
 }

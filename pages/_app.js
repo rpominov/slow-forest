@@ -32,7 +32,7 @@ const MenuItem = p => (
 )
 
 export default class MyApp extends App {
-  static async getInitialProps({Component, router, ctx}) {
+  static async getInitialProps({Component, router, ctx}: any) {
     let pageProps = {}
 
     if (Component.getInitialProps) {
@@ -130,8 +130,8 @@ export default class MyApp extends App {
               <ul>
                 {[
                   ["/basic", "basic"],
-                  ["/syncValidation", "sync validation"],
-                  ["/submitValidation", "submit validation"],
+                  ["/sync-validation", "sync validation"],
+                  ["/submit-validation", "submit validation"],
                   ["/todo", "async validation on blur"],
                   ["/todo", "async validation on submit"],
                   ["/todo", "async validation on change"],

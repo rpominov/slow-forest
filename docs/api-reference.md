@@ -35,19 +35,33 @@ const MyForm = () => (
 
 <!-- toc -->
 
-- [formApi methods](#formapi-methods)
+* [formApi methods](#formapi-methods)
   * [formApi.getValues()](#formapigetvalues)
   * [formApi.getValue(fieldName)](#formapigetvaluefieldname)
   * [formApi.setValue(fieldName, value)](#formapisetvaluefieldname-value)
+  * [formApi.setTouched(fieldName, isTouched)](#formapisettouchedfieldname-istouched)
+  * [formApi.isTouched(fieldName)](#formapiistouchedfieldname)
+  * [formApi.fieldUpdateTime(fieldName)](#formapifieldupdatetimefieldname)
   * [formApi.submit()](#formapisubmit)
   * [formApi.submitEventHandler(event)](#formapisubmiteventhandlerevent)
+  * [formApi.isSubmitting()](#formapiissubmitting)
   * [formApi.cancelSubmit()](#formapicancelsubmit)
-- [Form component props](#form-component-props)
+  * [formApi.getSubmitResult()](#formapigetsubmitresult)
+  * [formApi.runAsyncValidation(validatorId)](#formapirunasyncvalidationvalidatorid)
+  * [formApi.cancelAsyncValidation(validatorId)](#formapicancelasyncvalidationvalidatorid)
+  * [formApi.isAsyncValidationRunning(validatorId)](#formapiisasyncvalidationrunningvalidatorid)
+  * [formApi.getValidationResult(validatorId)](#formapigetvalidationresultvalidatorid)
+  * [formApi.hasFieldChangedSinceInitialization(fieldName)](#formapihasfieldchangedsinceinitializationfieldname)
+  * [formApi.hasFieldChangedSinceSubmit(fieldName)](#formapihasfieldchangedsincesubmitfieldname)
+  * [formApi.hasFieldChangedSinceLastValidation(fieldName, validatorId)](#formapihasfieldchangedsincelastvalidationfieldname-validatorid)
+  * [formApi.getErrors(predicate)](#formapigeterrorspredicate)
+* [Form component props](#form-component-props)
   * [props.render](#propsrender)
   * [props.initialValues](#propsinitialvalues)
   * [props.submitHandler](#propssubmithandler)
   * [props.syncValidator](#propssyncvalidator)
-- [SubmitResult constructors](#submitresult-constructors)
+  * [props.asyncValidators](#propsasyncvalidators)
+* [SubmitResult constructors](#submitresult-constructors)
   * [submitResult.success()](#submitresultsuccess)
   * [submitResult.failure(errors)](#submitresultfailureerrors)
 
@@ -101,6 +115,18 @@ Changes the current value of a field.
 <input ... onChange={e => formApi.setValue("foo", e.target.value)} />
 ```
 
+### formApi.setTouched(fieldName, isTouched)
+
+TODO.
+
+### formApi.isTouched(fieldName)
+
+TODO.
+
+### formApi.fieldUpdateTime(fieldName)
+
+TODO.
+
 ### formApi.submit()
 
 Submits the form. See also [`props.submitHandler`](#propssubmithandler) for more
@@ -131,7 +157,66 @@ You can use this function as `onSubmit` prop on a `form` element. Same as
 <form onSubmit={formApi.submitEventHandler}> ... </form>
 ```
 
+### formApi.isSubmitting()
+
+TODO.
+
 ### formApi.cancelSubmit()
+
+TODO.
+
+### formApi.getSubmitResult()
+
+TODO.
+
+### formApi.runAsyncValidation(validatorId)
+
+<!--
+If we use validatorId indtead of fieldName
+1. How do one make sure all fields are validated before submit (w/o reduntand runs)
+-->
+
+TODO.
+
+### formApi.cancelAsyncValidation(validatorId)
+
+TODO.
+
+### formApi.isAsyncValidationRunning(validatorId)
+
+<!--
+1. Running
+2. Not running, current value checked
+3. Not running, current value isn't checked
+-->
+
+TODO.
+
+### formApi.getValidationResult(validatorId)
+
+TODO.
+
+### formApi.hasFieldChangedSinceInitialization(fieldName)
+
+TODO
+
+### formApi.hasFieldChangedSinceSubmit(fieldName)
+
+TODO.
+
+### formApi.hasFieldChangedSinceLastValidation(fieldName, validatorId)
+
+TODO.
+
+### formApi.getErrors(predicate)
+
+TODO.
+
+### formApi.getAllSubmits()
+
+TODO.
+
+### formApi.getAllValidationResults()
 
 TODO.
 
@@ -216,6 +301,10 @@ import {Form, submitResult} from "slow-forest"
 ```
 
 ### props.syncValidator
+
+TODO.
+
+### props.asyncValidators
 
 TODO.
 
