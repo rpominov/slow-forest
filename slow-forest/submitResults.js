@@ -4,7 +4,7 @@ import type {SubmitResult, FormError} from "./types"
 
 export function success<SubmitMeta>(
   meta: SubmitMeta,
-): SubmitResult<SubmitMeta, any> {
+): SubmitResult<SubmitMeta, void> {
   return {tag: "success", meta}
 }
 

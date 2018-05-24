@@ -2,153 +2,151 @@
 
 import getTime from "./getTime"
 import Form from "./Form"
-import type {Canceler, UnresolvedSubmit, ResolvedSubmit} from "./types"
+import type {
+  Values,
+  FormErrorProcessed,
+  ResolvedSubmit,
+  Time,
+  PendingSubmit,
+} from "./types"
 
 export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   _form: Form<Value, SubmitMeta, ErrorMeta>
-  _cancelSubmit: Canceler
 
   constructor(form: Form<Value, SubmitMeta, ErrorMeta>) {
     this._form = form
   }
 
-  submitEventHandler = (e: Event): void => {
-    e.preventDefault()
-    this.submit()
+  getInitialValues = (): Values<Value> => {
+    // TODO
+    return {}
   }
 
-  submit = (): void => {
-    const {submitHandler} = this._form.props
-    const {currentValues, pendingSubmit} = this._form.state
-
-    if (!submitHandler) {
-      return
-    }
-
-    if (pendingSubmit !== null) {
-      if (this._cancelSubmit) {
-        this._cancelSubmit()
-      }
-      this._cancelSubmit = null
-    }
-
-    const startTime = getTime()
-
-    this._form.setState({pendingSubmit: {startTime}})
-
-    this._cancelSubmit = submitHandler(currentValues, (result, afterSubmit) => {
-      this._cancelSubmit = null
-
-      const {pendingSubmit, lastResolvedSubmit, errors} = this._form.state
-
-      // ignore invalid calls to submit callback
-      if (
-        pendingSubmit === null ||
-        pendingSubmit.startTime.count !== startTime.count
-      ) {
-        return
-      }
-
-      const notSubmitErrors = errors.filter(e => e.source !== "submit")
-
-      const newErrors =
-        result.tag === "success"
-          ? notSubmitErrors
-          : notSubmitErrors.concat(
-              result.errors.map(common => ({
-                source: "submit",
-                time: pendingSubmit.startTime,
-                common,
-              })),
-            )
-
-      const newState = {
-        pendingSubmit: null,
-        lastResolvedSubmit: {
-          startTime: pendingSubmit.startTime,
-          endTime: getTime(),
-          result,
-        },
-        errors: newErrors,
-      }
-
-      this._form.setState(newState, afterSubmit)
-    })
+  reinitialize = (initialValues?: Values<Value>): void => {
+    // TODO
   }
 
-  getValue = (name: string): Value => {
-    return this._form.state.currentValues[name]
+  getInitializationTime = (): Time => {
+    // TODO
+    return {time: 0, count: 0}
   }
 
-  setValue = (name: string, newValue: Value): void => {
-    const validators = this._form.props.validators || []
-    function updater(state) {
-      const newValues = {...state.currentValues, [name]: newValue}
-      const time = getTime()
-
-      const newErrors = validators.reduce((errors, validator) => {
-        if (validator.tag === "asynchronous") {
-          return errors
-        }
-        if (
-          validator.fields !== null &&
-          (!Array.isArray(validator.fields) ||
-            !validator.fields.includes(name)) &&
-          (!(typeof validator.fields === "function") || !validator.fields(name))
-        ) {
-          return errors
-        }
-        return errors
-          .filter(
-            e => e.source !== "synchronous" || e.validator !== validator.id,
-          )
-          .concat(
-            validator.validator(newValues).map(common => ({
-              source: "synchronous",
-              validator: validator.id,
-              time,
-              common,
-            })),
-          )
-      }, state.errors)
-
-      return {
-        currentValues: newValues,
-        valuesUpdateTime: {...state.valuesUpdateTime, [name]: time},
-        errors: newErrors,
-      }
-    }
-
-    return this._form.setState(updater)
+  getValue = (fieldName: string): Value | void => {
+    return this._form.getValues()[fieldName]
   }
 
-  _initializeState(
-    props: $PropertyType<Form<Value, SubmitMeta, ErrorMeta>, "props">,
-  ) {
-    const initialValues = props.initialValues || {}
-    const validators = props.validators || []
+  getAllValues = (): Values<Value> => {
+    return this._form.getValues()
+  }
 
-    const time = getTime()
+  setValue = (fieldName: string, newValue: Value): void => {
+    return this._form.setValue(fieldName, newValue)
+  }
 
-    this._form.state = {
-      initialValues,
-      currentValues: initialValues,
-      valuesUpdateTime: {},
-      pendingSubmit: null,
-      lastResolvedSubmit: null,
-      errors: validators
-        .map(
-          v =>
-            v.tag === "synchronous"
-              ? v.validator(initialValues).map(common => ({
-                  source: "synchronous",
-                  validator: v.id,
-                  time,
-                  common,
-                }))
-              : [],
-        )
-        .reduce((a, b) => a.concat(b), []),
+  getFieldUpdateTime = (fieldName: string): Time => {
+    // TODO
+    return {time: 0, count: 0}
+  }
+
+  submit = (e?: Event): void => {
+    if (e) {
+      e.preventDefault()
     }
+    return this._form.submit()
+  }
+
+  cancelSubmit = (): void => {
+    // TODO
+  }
+
+  getPendingSubmit = (): PendingSubmit<Value> | null => {
+    // TODO
+    return null
+  }
+
+  getResolvedSubmit = (): ResolvedSubmit<
+    Value,
+    SubmitMeta,
+    ErrorMeta,
+  > | null => {
+    // TODO
+    return null
+  }
+
+  setTouched = (fieldName: string, isTouched: boolean): void => {
+    // TODO
+  }
+
+  isTouched = (fieldName: string): boolean | void => {
+    // TODO
+  }
+
+  getErrors = (
+    fieldName: string | null,
+    includeOutdated?: boolean,
+  ): $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>> => {
+    return this._form.getErrors({field: fieldName, includeOutdated})
+  }
+
+  getAllErrors = (
+    includeOutdated?: boolean,
+  ): $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>> => {
+    return this._form.getErrors({includeOutdated})
+  }
+
+  validate = (validatorId: string, cb?: () => void): void => {
+    // TODO
+  }
+
+  validateAll = (
+    cb?: (() => void) | null,
+    includeUpToDate?: boolean,
+  ): $ReadOnlyArray<string> => {
+    // TODO
+    return []
+  }
+
+  isValidating = (validatorId: string): boolean => {
+    // TODO
+    return false
+  }
+
+  cancelValidation = (validatorId: string): void => {
+    // TODO
+  }
+
+  hasChangedSinceSubmit = (fieldName: string): boolean => {
+    // TODO
+    return false
+  }
+
+  getFieldsChangedSinceSubmit = (): $ReadOnlyArray<string> => {
+    // TODO
+    return []
+  }
+
+  hasChangedSinceValidation = (
+    fieldName: string,
+    validatorId: string,
+  ): boolean => {
+    // TODO
+    return false
+  }
+
+  getFieldsChangedSinceValidation = (
+    validatorId?: string,
+  ): $ReadOnlyArray<string> => {
+    // TODO
+    return []
+  }
+
+  hasChangedSinceInitialization = (fieldName: string): boolean => {
+    // TODO
+    return false
+  }
+
+  getFieldsChangedSinceInitialization = (): $ReadOnlyArray<string> => {
+    // TODO
+    return []
   }
 }

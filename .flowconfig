@@ -5,6 +5,8 @@
 [libs]
 
 [lints]
+all=error
+untyped-import=off
 
 [options]
 

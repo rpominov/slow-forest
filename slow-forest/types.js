@@ -7,28 +7,31 @@ export type Time = $ReadOnly<{|time: number, count: number|}>
 export type Values<Value> = $ReadOnly<{[k: string]: Value}>
 
 export type FormError<ErrorMeta> = $ReadOnly<{|
-  field: string | null,
+  fieldName: string | null,
   message: string,
   meta: ErrorMeta,
 |}>
 
-export type FormErrorDecorated<ErrorMeta> =
+export type FormErrorProcessed<Value, ErrorMeta> =
   | $ReadOnly<{|
       source: "submit",
       time: Time,
-      common: FormError<ErrorMeta>,
+      fieldValue: Value | void,
+      ...FormError<ErrorMeta>,
     |}>
   | $ReadOnly<{|
       source: "synchronous",
       validator: string,
       time: Time,
-      common: FormError<ErrorMeta>,
+      fieldValue: Value | void,
+      ...FormError<ErrorMeta>,
     |}>
   | $ReadOnly<{|
       source: "asynchronous",
       validator: string,
       time: Time,
-      common: FormError<ErrorMeta>,
+      fieldValue: Value | void,
+      ...FormError<ErrorMeta>,
     |}>
 
 export type Canceler = void | null | (() => void)
@@ -64,16 +67,17 @@ export type SubmitResult<SubmitMeta, ErrorMeta> =
     |}>
 
 export type SubmitHandler<Value, SubmitMeta, ErrorMeta> = AsyncFunction<
-  Values<Value>,
+  FormApi<Value, SubmitMeta, ErrorMeta>,
   SubmitResult<SubmitMeta, ErrorMeta>,
 >
 
-export type UnresolvedSubmit = $ReadOnly<{|
+export type PendingSubmit<Value> = $ReadOnly<{|
   startTime: Time,
+  values: Values<Value>,
 |}>
 
-export type ResolvedSubmit<SubmitMeta, ErrorMeta> = $ReadOnly<{|
-  startTime: Time,
+export type ResolvedSubmit<Value, SubmitMeta, ErrorMeta> = $ReadOnly<{|
+  ...PendingSubmit<Value>,
   endTime: Time,
   result: SubmitResult<SubmitMeta, ErrorMeta>,
 |}>

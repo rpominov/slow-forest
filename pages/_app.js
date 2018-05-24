@@ -32,6 +32,7 @@ const MenuItem = p => (
 )
 
 export default class MyApp extends App {
+  // flowlint-next-line unclear-type:off
   static async getInitialProps({Component, router, ctx}: any) {
     let pageProps = {}
 
@@ -52,16 +53,25 @@ export default class MyApp extends App {
           </Head>
 
           <style global jsx>{`
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
+            html {
               font-family: monospace;
               font-size: 16px;
               line-height: 1.2;
               font-weight: normal;
               color: black;
-              background: white;
+              background: transparent;
+            }
+
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+              font-family: inherit;
+              font-size: inherit;
+              line-height: inherit;
+              font-weight: inherit;
+              color: inherit;
+              background: inherit;
             }
 
             .layoutWrap {
@@ -104,6 +114,16 @@ export default class MyApp extends App {
               padding: 15px 30px;
               cursor: pointer;
               color: #6f72ad;
+            }
+
+            .errors {
+              display: block;
+              color: red;
+              font-size: 14px;
+            }
+            .errors li {
+              display: block;
+              margin: 2px 0;
             }
           `}</style>
 
