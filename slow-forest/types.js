@@ -1,6 +1,7 @@
 // @flow
 
 import FormApi from "./FormApi"
+import {CancellationTokenShim} from "./cancellation"
 
 export type Time = $ReadOnly<{|time: number, count: number|}>
 
@@ -12,34 +13,17 @@ export type FormError<ErrorMeta> = $ReadOnly<{|
   meta: ErrorMeta,
 |}>
 
-export type FormErrorProcessed<Value, ErrorMeta> =
-  | $ReadOnly<{|
-      source: "submit",
-      time: Time,
-      fieldValue: Value | void,
-      ...FormError<ErrorMeta>,
-    |}>
-  | $ReadOnly<{|
-      source: "synchronous",
-      validator: string,
-      time: Time,
-      fieldValue: Value | void,
-      ...FormError<ErrorMeta>,
-    |}>
-  | $ReadOnly<{|
-      source: "asynchronous",
-      validator: string,
-      time: Time,
-      fieldValue: Value | void,
-      ...FormError<ErrorMeta>,
-    |}>
+export type ErrorSource =
+  | $ReadOnly<{|type: "submit"|}>
+  | $ReadOnly<{|type: "validator", id: string|}>
 
-export type Canceler = void | null | (() => void)
-
-export type AsyncFunction<-Input, +Output> = (
-  Input,
-  (Output, cb?: () => void) => void,
-) => Canceler
+export type FormErrorProcessed<Value, ErrorMeta> = $ReadOnly<{|
+  ...FormError<ErrorMeta>,
+  source: ErrorSource,
+  valueSnapshot:
+    | $ReadOnly<{|time: Time, fieldName: null, values: Values<Value>|}>
+    | $ReadOnly<{|time: Time, fieldName: string, value: Value|}>,
+|}>
 
 export type Validator<Value, ErrorMeta> =
   | $ReadOnly<{|
@@ -52,24 +36,21 @@ export type Validator<Value, ErrorMeta> =
       tag: "asynchronous",
       id: string,
       fields: null | $ReadOnlyArray<string> | (string => boolean),
-      validator: AsyncFunction<
+      validator: (
         Values<Value>,
-        $ReadOnlyArray<FormError<ErrorMeta>>,
-      >,
+        CancellationTokenShim,
+      ) => Promise<$ReadOnlyArray<FormError<ErrorMeta>> | void>,
     |}>
 
-export type SubmitResult<SubmitMeta, ErrorMeta> =
-  | $ReadOnly<{|tag: "success", meta: SubmitMeta|}>
-  | $ReadOnly<{|
-      tag: "failure",
-      errors: $ReadOnlyArray<FormError<ErrorMeta>>,
-      meta: SubmitMeta,
-    |}>
+export type SubmitResult<SubmitMeta, ErrorMeta> = $ReadOnly<{|
+  errors: $ReadOnlyArray<FormError<ErrorMeta>>,
+  meta: SubmitMeta,
+|}>
 
-export type SubmitHandler<Value, SubmitMeta, ErrorMeta> = AsyncFunction<
+export type SubmitHandler<Value, SubmitMeta, ErrorMeta> = (
   FormApi<Value, SubmitMeta, ErrorMeta>,
-  SubmitResult<SubmitMeta, ErrorMeta>,
->
+  CancellationTokenShim,
+) => Promise<SubmitResult<SubmitMeta, ErrorMeta> | void>
 
 export type PendingSubmit<Value> = $ReadOnly<{|
   startTime: Time,
@@ -80,4 +61,15 @@ export type ResolvedSubmit<Value, SubmitMeta, ErrorMeta> = $ReadOnly<{|
   ...PendingSubmit<Value>,
   endTime: Time,
   result: SubmitResult<SubmitMeta, ErrorMeta>,
+|}>
+
+export type PendingValidation<Value> = $ReadOnly<{|
+  startTime: Time,
+  values: Values<Value>,
+|}>
+
+export type ResolvedValidation<Value, ErrorMeta> = $ReadOnly<{|
+  ...PendingValidation<Value>,
+  endTime: Time,
+  errors: $ReadOnlyArray<FormError<ErrorMeta>>,
 |}>

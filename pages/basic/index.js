@@ -2,25 +2,27 @@
 
 import * as React from "react"
 import Form from "../../slow-forest/Form"
-import * as submitResults from "../../slow-forest/submitResults"
 
-function submitHandler(formApi, cb) {
-  const values = formApi.getValues()
-  setTimeout(() => {
-    if (values.name === "") {
-      cb(
-        submitResults.failure([
-          {
-            fieldName: "name",
-            message: "I told you name is required.",
-            meta: undefined,
-          },
-        ]),
-      )
-    } else {
-      cb(submitResults.success())
-    }
-  }, 3000)
+function sleep(time) {
+  return new Promise(resolve => setTimeout(resolve, time))
+}
+
+async function submitHandler(formApi) {
+  const values = formApi.getAllValues()
+
+  await sleep(1000)
+
+  if (values.name === "") {
+    return formApi.createSubmitResult([
+      {
+        fieldName: "name",
+        message: "I told you name is required.",
+        meta: undefined,
+      },
+    ])
+  }
+
+  return formApi.createSubmitResult()
 }
 
 function syncValidator(values) {
@@ -52,7 +54,7 @@ export default () => (
     ]}
     initialValues={{name: "", human: false, planet: "__unset__"}}
     render={formAPI => (
-      <form onSubmit={formAPI.submitEventHandler}>
+      <form onSubmit={formAPI.submit}>
         <TextField formAPI={formAPI} name="name" label="Name" />
 
         <RadioButtons
