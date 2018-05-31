@@ -33,7 +33,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form.state.initializationTime
   }
 
-  getValue: (fieldName: string) => Value | void = fieldName => {
+  getValue: (fieldName: string) => Value = fieldName => {
     return this._form.getValues()[fieldName]
   }
 
@@ -67,7 +67,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   }
 
   cancelSubmit: () => void = () => {
-    // TODO
+    return this._form.cancelSubmit()
   }
 
   getPendingSubmit: () => PendingSubmit<Value> | null = () => {
@@ -116,8 +116,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   }
 
   getValidators: () => $ReadOnlyArray<string> = () => {
-    // TODO
-    return []
+    return (this._form.props.validators || []).map(v => v.id)
   }
 
   isValidated: (fieldName: string) => boolean = fieldName => {
@@ -160,8 +159,10 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     )
 
     if (validators.length === 0) {
-      // TODO: return latest value/time
-      return null
+      return {
+        time: this.getFieldUpdateTime(fieldName),
+        value: this.getValue(fieldName),
+      }
     }
 
     const validatorRunMostEarly = validators.reduce((v1, v2) => {
@@ -192,13 +193,27 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   }
 
   shouldRunValidator: (validatorId: string) => boolean = validatorId => {
-    // TODO
-    return false
+    const resolvedRun = this.getResolvedValidatorRun(validatorId)
+
+    if (resolvedRun === null) {
+      return true
+    }
+
+    return this.getFieldNames().some(
+      fieldName =>
+        this.isValidatorRelatedToField(validatorId, fieldName) &&
+        this._form._hasValueChanged(
+          fieldName,
+          resolvedRun.startTime,
+          this.getFieldUpdateTime(fieldName),
+          resolvedRun.values[fieldName],
+          this.getValue(fieldName),
+        ),
+    )
   }
 
   runValidator: (validatorId: string) => Promise<void> = validatorId => {
-    // TODO
-    return Promise.resolve()
+    return this._form.runValidator(validatorId)
   }
 
   cancelValidatorRun: (validatorId: string) => void = validatorId => {
@@ -208,41 +223,49 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   getPendingValidatorRun: (
     validatorId: string,
   ) => PendingValidation<Value> | null = validatorId => {
-    // TODO
-    return null
+    return this._form.state.pendingValidations[validatorId] || null
   }
 
   getResolvedValidatorRun: (
     validatorId: string,
   ) => ResolvedValidation<Value, ErrorMeta> | null = validatorId => {
-    // TODO
-    return null
+    return this._form.state.resolvedValidations[validatorId] || null
   }
 
+  // TODO: better name
   isValidatorRelatedToField: (
     validatorId: string,
     fieldName: string,
   ) => boolean = (validatorId, fieldName) => {
-    // TODO
-    return false
-  }
-
-  getFieldsChangedSince: (time: Time) => $ReadOnlyArray<string> = time => {
-    const {fieldUpdateTime} = this._form.state
-    return Object.keys(fieldUpdateTime).filter(
-      k => fieldUpdateTime[k].count > time.count,
+    const validator = (this._form.props.validators || []).find(
+      v => v.id === validatorId,
     )
+    if (validator === undefined) {
+      throw new Error("TODO: error message")
+    }
+    return this._form.isValidatorRelatedToField(validator, fieldName)
   }
 
   hasChangedSinceSubmit: (fieldName: string) => boolean = fieldName => {
     const {resolvedSubmit} = this._form.state
     return resolvedSubmit
-      ? this.getFieldsChangedSince(resolvedSubmit.startTime).includes(fieldName)
+      ? this._form._hasValueChanged(
+          fieldName,
+          resolvedSubmit.startTime,
+          this.getFieldUpdateTime(fieldName),
+          resolvedSubmit.values[fieldName],
+          this.getValue(fieldName),
+        )
       : false
   }
 
   hasChangedSinceInitialization: (fieldName: string) => boolean = fieldName => {
-    const {initializationTime} = this._form.state
-    return this.getFieldsChangedSince(initializationTime).includes(fieldName)
+    return this._form._hasValueChanged(
+      fieldName,
+      this.getInitializationTime(),
+      this.getFieldUpdateTime(fieldName),
+      this.getInitialValues()[fieldName],
+      this.getValue(fieldName),
+    )
   }
 }

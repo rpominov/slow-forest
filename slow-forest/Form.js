@@ -151,7 +151,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     ]
   }
 
-  _isValidatorRelatedToField(
+  isValidatorRelatedToField(
     validator: Validator<Value, ErrorMeta>,
     fieldName: string,
   ): boolean {
@@ -230,7 +230,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
         cancellationSource.close()
         this._validationCancellationSources[validatorId] = undefined
 
-        // Promised resolved to undefined although submit wasn't canceled
+        // Promised resolved to undefined although validation wasn't canceled
         if (newErrors === undefined) {
           this.setState({
             pendingValidations: {
@@ -268,19 +268,15 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
 
   submit(): Promise<void> {
     const {submitHandler} = this.props
-    const {currentValues, pendingSubmit} = this.state
+    const {currentValues} = this.state
+
+    this.cancelSubmit()
 
     if (!submitHandler) {
       return Promise.resolve()
     }
 
-    if (this._submitCancellationSource !== null) {
-      this._submitCancellationSource.cancel()
-      this._submitCancellationSource = null
-    }
-
     const startTime = getTime()
-
     this.setState({pendingSubmit: {startTime, values: currentValues}})
 
     this._submitCancellationSource = new CancellationSourceShim()
@@ -336,6 +332,24 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     )
   }
 
+  cancelSubmit(): void {
+    const {pendingSubmit} = this.state
+
+    if (pendingSubmit === null) {
+      return
+    }
+
+    this.setState({pendingSubmit: null})
+
+    // Can't happen, we need this check only for Flow
+    if (this._submitCancellationSource === null) {
+      throw new Error("TODO: error message")
+    }
+
+    this._submitCancellationSource.cancel()
+    this._submitCancellationSource = null
+  }
+
   getValues(): Values<Value> {
     return this.state.currentValues
   }
@@ -345,33 +359,45 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     fieldName?: string,
     validatorId?: string,
   ): $Shape<State<Value, SubmitMeta, ErrorMeta>> {
-    const {currentValues, errors} = state
+    const {currentValues} = state
     const time = getTime()
     const validators = this.props.validators || []
-    return {
-      // TODO: resolvedValidations
-      errors: validators.reduce((errors, validator) => {
+    return validators.reduce(
+      (partialState, validator) => {
         if (validator.tag === "asynchronous") {
-          return errors
+          return partialState
         }
         if (
           fieldName !== undefined &&
-          !this._isValidatorRelatedToField(validator, fieldName)
+          !this.isValidatorRelatedToField(validator, fieldName)
         ) {
-          return errors
+          return partialState
         }
         if (validatorId !== undefined && validator.id === validatorId) {
-          return errors
+          return partialState
         }
-        return this._updateErrorsForValidator(
-          errors,
-          validator.validator(currentValues),
-          validator,
-          time,
-          currentValues,
-        )
-      }, errors),
-    }
+        const newErrors = validator.validator(currentValues)
+        return {
+          errors: this._updateErrorsForValidator(
+            partialState.errors,
+            newErrors,
+            validator,
+            time,
+            currentValues,
+          ),
+          resolvedValidations: {
+            ...partialState.resolvedValidations,
+            [validator.id]: {
+              startTime: time,
+              endTime: time,
+              values: currentValues,
+              errors: newErrors,
+            },
+          },
+        }
+      },
+      {errors: state.errors, resolvedValidations: state.resolvedValidations},
+    )
   }
 
   setValue(fieldName: string, newValue: Value): void {
