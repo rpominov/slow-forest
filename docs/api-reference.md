@@ -1,25 +1,54 @@
 # API reference
 
+<!-- toc -->
+
+* [Intro](#intro)
+* [About type signatures](#about-type-signatures)
+* [formApi methods](#formapi-methods)
+  * [formApi.getInitialValues()](#formapigetinitialvalues)
+  * [formApi.getInitializationTime()](#formapigetinitializationtime)
+  * [formApi.setValue(fieldName, value)](#formapisetvaluefieldname-value)
+  * [formApi.getValue(fieldName)](#formapigetvaluefieldname)
+  * [formApi.getAllValues()](#formapigetallvalues)
+  * [formApi.getValueUpdateTime(fieldName)](#formapigetvalueupdatetimefieldname)
+  * [formApi.setTouched(fieldName, isTouched)](#formapisettouchedfieldname-istouched)
+  * [formApi.isTouched(fieldName)](#formapiistouchedfieldname)
+  * [formApi.submit()](#formapisubmit)
+  * [formApi.cancelSubmit()](#formapicancelsubmit)
+  * [formApi.getPendingSubmit()](#formapigetpendingsubmit)
+  * [formApi.getResolvedSubmit()](#formapigetresolvedsubmit)
+  * [formApi.reinitialize(initialValues)](#formapireinitializeinitialvalues)
+* [Form props](#form-props)
+  * [props.render](#propsrender)
+  * [props.initialValues](#propsinitialvalues)
+  * [props.submitHandler](#propssubmithandler)
+  * [props.afterSubmit](#propsaftersubmit)
+  * [props.validators](#propsvalidators)
+  * [props.hasValueChanged](#propshasvaluechanged)
+* [CancellationTokenShim](#cancellationtokenshim)
+* [Other](#other)
+  * [getTime()](#gettime)
+
+<!-- tocstop -->
+
+## Intro
+
 There're two main artifacts in slow-forest API: the `Form` component and the
 `formApi` object. The way it works, you pass a render function as a prop to
 `<Form/>` and get a `formApi` object as an argument to your render function. The
-API object allows you to read and change the form state, like getting and
-setting values of fields, submitting the form etc. Here's how this looks:
+API object allows you to read and change the form state: get and set values of
+fields, submit the form etc. Here's how this looks:
 
 ```js
 import React from "react"
 import {Form} from "slow-forest"
 
-function mySubmitHandler(formApi, callback) {
-  // ...
-}
-
 const MyForm = () => (
   <Form
     initialValues={{name: ""}}
-    submitHandler={mySubmitHandler}
+    submitHandler={async function(formApi) { ... }}
     render={formApi => (
-      <form onSubmit={formApi.submitEventHandler}>
+      <form onSubmit={formApi.submit}>
         ...
         <input
           value={formApi.getValue("name")}
@@ -33,52 +62,82 @@ const MyForm = () => (
 )
 ```
 
-<!-- toc -->
+## Type signatures
 
-* [formApi methods](#formapi-methods)
-  * [formApi.getValues()](#formapigetvalues)
-  * [formApi.getValue(fieldName)](#formapigetvaluefieldname)
-  * [formApi.setValue(fieldName, value)](#formapisetvaluefieldname-value)
-  * [formApi.setTouched(fieldName, isTouched)](#formapisettouchedfieldname-istouched)
-  * [formApi.isTouched(fieldName)](#formapiistouchedfieldname)
-  * [formApi.fieldUpdateTime(fieldName)](#formapifieldupdatetimefieldname)
-  * [formApi.submit()](#formapisubmit)
-  * [formApi.submitEventHandler(event)](#formapisubmiteventhandlerevent)
-  * [formApi.isSubmitting()](#formapiissubmitting)
-  * [formApi.cancelSubmit()](#formapicancelsubmit)
-  * [formApi.getSubmitResult()](#formapigetsubmitresult)
-  * [formApi.runAsyncValidation(validatorId)](#formapirunasyncvalidationvalidatorid)
-  * [formApi.cancelAsyncValidation(validatorId)](#formapicancelasyncvalidationvalidatorid)
-  * [formApi.isAsyncValidationRunning(validatorId)](#formapiisasyncvalidationrunningvalidatorid)
-  * [formApi.getValidationResult(validatorId)](#formapigetvalidationresultvalidatorid)
-  * [formApi.hasFieldChangedSinceInitialization(fieldName)](#formapihasfieldchangedsinceinitializationfieldname)
-  * [formApi.hasFieldChangedSinceSubmit(fieldName)](#formapihasfieldchangedsincesubmitfieldname)
-  * [formApi.hasFieldChangedSinceLastValidation(fieldName, validatorId)](#formapihasfieldchangedsincelastvalidationfieldname-validatorid)
-  * [formApi.getErrors(predicate)](#formapigeterrorspredicate)
-* [Form component props](#form-component-props)
-  * [props.render](#propsrender)
-  * [props.initialValues](#propsinitialvalues)
-  * [props.submitHandler](#propssubmithandler)
-  * [props.syncValidator](#propssyncvalidator)
-  * [props.asyncValidators](#propsasyncvalidators)
-* [SubmitResult constructors](#submitresult-constructors)
-  * [submitResult.success()](#submitresultsuccess)
-  * [submitResult.failure(errors)](#submitresultfailureerrors)
+We use Flow for type signatures in this document, but if you're more familiar
+with TypeScript you also should be able to read them pretty easily.
 
-<!-- tocstop -->
+We use some types in multiple places and to not repeat them let's introduce
+aliases here:
+
+```js
+// The object that we use to represent time
+type Time = {time: number, count: number}
+
+// You provide errors to the library in this format
+type FormError<ErrorMeta> = {
+  fieldName: string | null,
+  message: string,
+  meta: ErrorMeta,
+}
+
+// When you get errors from the library
+// we automatically attach some usefull metadata to them
+type FormErrorProcessed<Value, ErrorMeta> = {
+  ...FormError<ErrorMeta>,
+  source: {type: "submit"} | {type: "validator", id: string},
+  valueSnapshot:
+    | {time: Time, fieldName: null, values: {[fieldName: string]: Value}}
+    | {time: Time, fieldName: string, value: Value},
+}
+```
+
+Also, you'll notice three odd types: `Value`, `SubmitMeta`, and `ErrorMeta`.
+These are type arguments of `Form` and `FormApi`:
+
+```js
+class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<...> {
+  ...
+}
+
+class FormAPI<Value, SubmitMeta, ErrorMeta> {
+  ...
+}
+```
+
+They correspond to any types you choose, but they have to be consistent for each
+form instance. For example, if you call `formApi.setValue()` with strings and
+numbers as second arguments, you should expect either string or number as a
+return type of `formApi.getValue()`. So `Value` is the type that you use for
+values in your form, the other two related to [submission](#TODO) and
+[validation](#TODO).
 
 ## formApi methods
 
-### formApi.getValues()
+### formApi.getInitialValues()
+
+TODO.
+
+### formApi.getInitializationTime()
+
+TODO.
+
+### formApi.setValue(fieldName, value)
+
+Changes the current value of a field.
 
 <!-- prettier-ignore -->
 ```js
 // Type signature
 
-(kind?: 'current' | 'initial' | 'submitted') => {[fieldName: string]: mixed}
+(fieldName: string, value: Value) => void
 ```
 
-TODO.
+```js
+// Example
+
+<input ... onChange={e => formApi.setValue("foo", e.target.value)} />
+```
 
 ### formApi.getValue(fieldName)
 
@@ -89,7 +148,7 @@ the last finished submit using the second argument.
 ```js
 // Type signature
 
-(fieldName: string, kind?: 'current' | 'initial' | 'submitted') => mixed
+(fieldName: string) => Value
 ```
 
 ```js
@@ -98,22 +157,20 @@ the last finished submit using the second argument.
 <input ... value={formApi.getValue("foo")} />
 ```
 
-### formApi.setValue(fieldName, value)
-
-Changes the current value of a field.
+### formApi.getAllValues()
 
 <!-- prettier-ignore -->
 ```js
 // Type signature
 
-(fieldName: string, value: mixed) => void
+() => {[fieldName: string]: Value}
 ```
 
-```js
-// Example
+TODO.
 
-<input ... onChange={e => formApi.setValue("foo", e.target.value)} />
-```
+### formApi.getValueUpdateTime(fieldName)
+
+TODO.
 
 ### formApi.setTouched(fieldName, isTouched)
 
@@ -123,104 +180,36 @@ TODO.
 
 TODO.
 
-### formApi.fieldUpdateTime(fieldName)
-
-TODO.
-
 ### formApi.submit()
 
-Submits the form. See also [`props.submitHandler`](#propssubmithandler) for more
-info on how submitting works.
+Submits the form. Returns a promise that resolves when submit is complete or
+canceled. See also [`props.submitHandler`](#propssubmithandler) for more info on
+how submitting works.
 
 <!-- prettier-ignore -->
 ```js
 // Type signature
 
-() => void
+() => Promise<void>
 ```
-
-### formApi.submitEventHandler(event)
-
-You can use this function as `onSubmit` prop on a `form` element. Same as
-`formApi.submit()` but also calls `event.preventDefault()` on the submit event.
-
-<!-- prettier-ignore -->
-```js
-// Type signature
-
-(event: Event) => void
-```
-
-```js
-// Example
-
-<form onSubmit={formApi.submitEventHandler}> ... </form>
-```
-
-### formApi.isSubmitting()
-
-TODO.
 
 ### formApi.cancelSubmit()
 
 TODO.
 
-### formApi.getSubmitResult()
+### formApi.getPendingSubmit()
 
 TODO.
 
-### formApi.runAsyncValidation(validatorId)
-
-<!--
-If we use validatorId indtead of fieldName
-1. How do one make sure all fields are validated before submit (w/o reduntand runs)
--->
+### formApi.getResolvedSubmit()
 
 TODO.
 
-### formApi.cancelAsyncValidation(validatorId)
+### formApi.reinitialize(initialValues)
 
 TODO.
 
-### formApi.isAsyncValidationRunning(validatorId)
-
-<!--
-1. Running
-2. Not running, current value checked
-3. Not running, current value isn't checked
--->
-
-TODO.
-
-### formApi.getValidationResult(validatorId)
-
-TODO.
-
-### formApi.hasFieldChangedSinceInitialization(fieldName)
-
-TODO
-
-### formApi.hasFieldChangedSinceSubmit(fieldName)
-
-TODO.
-
-### formApi.hasFieldChangedSinceLastValidation(fieldName, validatorId)
-
-TODO.
-
-### formApi.getErrors(predicate)
-
-TODO.
-
-### formApi.getAllSubmits()
-
-TODO.
-
-### formApi.getAllValidationResults()
-
-TODO.
-
-## Form component props
+## Form props
 
 ### props.render
 
@@ -230,7 +219,7 @@ Your render function.
 ```js
 // Type signature
 
-(formApi: FormAPI) => React.Node
+(formApi: FormAPI<Value, SubmitMeta, ErrorMeta>) => React.Node
 ```
 
 ```js
@@ -241,13 +230,13 @@ Your render function.
 
 ### props.initialValues
 
-An object with field names as keys and initial field values as values.
+An object with field names as keys and initial values as values.
 
 <!-- prettier-ignore -->
 ```js
 // Type signature
 
-{[fieldName: string]: mixed}
+{[fieldName: string]: Value}
 ```
 
 ```js
@@ -259,17 +248,8 @@ An object with field names as keys and initial field values as values.
 ### props.submitHandler
 
 A callback that gets called when you submit the form using `formApi.submit()`.
-Accepts `formApi` and a callback that you call when submit is finished. The
-provided callback expects a `SubmitResult` object that you can create using
-[`submitResult.success()`](#submitresultsuccess) or
-[`submitResult.failure()`](#submitresultfailureerrors).
 
-The provided callback also accepts `afterSubmit` callback as an optional second
-argument. We call `afterSubmit` after `<Form>`'s state is updated.
-
-Submit handler may return a callback that cancels the submit. We'll call it when
-a submit is interupted by another submit. Also you can cancel submit manually
-using [`formApi.cancelSubmit()`](#formapicancelsubmit).
+TODO.
 
 <!-- prettier-ignore -->
 ```js
@@ -277,53 +257,34 @@ using [`formApi.cancelSubmit()`](#formapicancelsubmit).
 
 (
   formApi: FormApi,
-  callback: (result: SubmitResult, afterSubmit?: () => void) => void,
-) => ?(() => void)
+  cancellationToken: CancellationTokenShim,
+) => Promise<{errors: Array<FormError<ErrorMeta>>, meta: SubmitMeta}>
 ```
 
 ```js
 // Example
 
-import {Form, submitResult} from "slow-forest"
-
-<Form ...
-  submitHandler={(formApi, callback) => {
-    const data = formApi.getValues()
-    sendDataToTheServer(data).then(result =>
-      callback(
-        result.successful
-          ? submitResult.success()
-          : submitResult.failure(result.errors),
-      ),
-    )
-  }}
-/>
+// TODO
 ```
 
-### props.syncValidator
+### props.afterSubmit
 
 TODO.
 
-### props.asyncValidators
+### props.validators
 
 TODO.
 
-## SubmitResult constructors
-
-### submitResult.success()
+### props.hasValueChanged
 
 TODO.
 
-### submitResult.failure(errors)
+## CancellationTokenShim
 
 TODO.
 
-```js
-submitResult.failure([
-  // a error related to phone field
-  {field: "phone", message: "Please enter your phone"},
+## Other
 
-  // a error that isn't related to a particular field
-  {message: "Passwords don't match"},
-])
-```
+### getTime()
+
+TODO.

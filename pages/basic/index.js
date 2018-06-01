@@ -13,16 +13,19 @@ async function submitHandler(formApi) {
   await sleep(1000)
 
   if (values.name === "") {
-    return formApi.createSubmitResult([
-      {
-        fieldName: "name",
-        message: "I told you name is required.",
-        meta: undefined,
-      },
-    ])
+    return {
+      errors: [
+        {
+          fieldName: "name",
+          message: "I told you name is required.",
+          meta: undefined,
+        },
+      ],
+      meta: null,
+    }
   }
 
-  return formApi.createSubmitResult()
+  return {errors: [], meta: null}
 }
 
 function syncValidator(values) {

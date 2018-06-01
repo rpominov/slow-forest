@@ -419,7 +419,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     })
   }
 
-  getFieldUpdateTime(fieldName: string): Time {
+  getValueUpdateTime(fieldName: string): Time {
     return (
       this.state.fieldUpdateTime[fieldName] || this.state.initializationTime
     )
@@ -434,7 +434,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
         this._hasValueChanged(
           fieldName,
           valueSnapshot.time,
-          this.getFieldUpdateTime(fieldName),
+          this.getValueUpdateTime(fieldName),
           valueSnapshot.values[fieldName],
           currentValues[fieldName],
         ),
@@ -444,7 +444,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     return this._hasValueChanged(
       valueSnapshot.fieldName,
       valueSnapshot.time,
-      this.getFieldUpdateTime(valueSnapshot.fieldName),
+      this.getValueUpdateTime(valueSnapshot.fieldName),
       valueSnapshot.value,
       currentValues[valueSnapshot.fieldName],
     )

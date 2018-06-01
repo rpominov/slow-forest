@@ -48,17 +48,11 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form.setValue(fieldName, newValue)
   }
 
-  getFieldUpdateTime: (fieldName: string) => Time = fieldName => {
-    return this._form.getFieldUpdateTime(fieldName)
+  getValueUpdateTime: (fieldName: string) => Time = fieldName => {
+    return this._form.getValueUpdateTime(fieldName)
   }
 
-  createSubmitResult: (
-    errors: $ReadOnlyArray<FormError<ErrorMeta>> | void,
-    meta: SubmitMeta,
-  ) => SubmitResult<SubmitMeta, ErrorMeta> = (errors, meta) => {
-    return {errors: errors === undefined ? [] : errors, meta}
-  }
-
+  // TODO: return Promise<isCancelled> instead of Promise<void>
   submit: (event?: Event) => Promise<void> = event => {
     if (event) {
       event.preventDefault()
@@ -120,11 +114,19 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
   }
 
   isValidated: (fieldName: string) => boolean = fieldName => {
-    return this.getValidators().some(
-      v =>
-        this.isValidatorRelatedToField(v, fieldName) &&
-        this.shouldRunValidator(v),
-    )
+    const snapshot = this.getLastValidatedValueSnapshot(fieldName)
+
+    // TODO: what if validator checks two values and other have changed?
+    // waht if a error related to two fields and we are looking at field A, while B has changed?
+    return snapshot === null
+      ? true
+      : this._form._hasValueChanged(
+          fieldName,
+          snapshot.time,
+          this.getValueUpdateTime(fieldName),
+          snapshot.value,
+          this.getValue(fieldName),
+        )
   }
 
   isValidating: (fieldName: string) => boolean = fieldName => {
@@ -150,8 +152,8 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     ).then(() => undefined)
   }
 
-  // TODO: better method name
-  getLastValidationInfoForValue: (
+  // TODO: better name
+  getLastValidatedValueSnapshot: (
     fieldName: string,
   ) => $ReadOnly<{|time: Time, value: Value|}> | null = fieldName => {
     const validators = this.getValidators().filter(v =>
@@ -160,7 +162,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
 
     if (validators.length === 0) {
       return {
-        time: this.getFieldUpdateTime(fieldName),
+        time: this.getValueUpdateTime(fieldName),
         value: this.getValue(fieldName),
       }
     }
@@ -205,7 +207,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
         this._form._hasValueChanged(
           fieldName,
           resolvedRun.startTime,
-          this.getFieldUpdateTime(fieldName),
+          this.getValueUpdateTime(fieldName),
           resolvedRun.values[fieldName],
           this.getValue(fieldName),
         ),
@@ -252,7 +254,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
       ? this._form._hasValueChanged(
           fieldName,
           resolvedSubmit.startTime,
-          this.getFieldUpdateTime(fieldName),
+          this.getValueUpdateTime(fieldName),
           resolvedSubmit.values[fieldName],
           this.getValue(fieldName),
         )
@@ -263,7 +265,7 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form._hasValueChanged(
       fieldName,
       this.getInitializationTime(),
-      this.getFieldUpdateTime(fieldName),
+      this.getValueUpdateTime(fieldName),
       this.getInitialValues()[fieldName],
       this.getValue(fieldName),
     )

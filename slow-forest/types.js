@@ -8,7 +8,7 @@ export type Time = $ReadOnly<{|time: number, count: number|}>
 export type Values<Value> = $ReadOnly<{[k: string]: Value}>
 
 export type FormError<ErrorMeta> = $ReadOnly<{|
-  fieldName: string | null,
+  fieldName: $ReadOnlyArray<string>, // use something like __form__ for whole form errors
   message: string,
   meta: ErrorMeta,
 |}>
