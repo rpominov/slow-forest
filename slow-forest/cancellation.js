@@ -70,6 +70,10 @@ export class CancellationSourceShim {
     this._registrations.push(registration)
     return registration
   }
+
+  toJSON() {
+    return ""
+  }
 }
 
 export class CancellationTokenShim {
@@ -95,4 +99,8 @@ export class CancellationTokenShim {
 
   // TODO
   toAbortSignal(): void {}
+
+  toJSON() {
+    return ""
+  }
 }

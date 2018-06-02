@@ -16,7 +16,7 @@ async function submitHandler(formApi) {
     return {
       errors: [
         {
-          fieldName: "name",
+          fieldNames: ["name"],
           message: "I told you name is required.",
           meta: undefined,
         },
@@ -28,33 +28,30 @@ async function submitHandler(formApi) {
   return {errors: [], meta: null}
 }
 
-function syncValidator(values) {
-  const errors = []
+// function syncValidator(values) {
+//   const errors = []
 
-  if (values.name === "") {
-    errors.push({
-      fieldName: "name",
-      message: "Name is required.",
-      meta: undefined,
-    })
-  }
+//   if (values.name === "") {
+//     errors.push({
+//       fieldName: "name",
+//       message: "Name is required.",
+//       meta: undefined,
+//     })
+//   }
 
-  if (values.pet === "cat" && values.planet !== "pluto") {
-    errors.push({
-      fieldName: null,
-      message: "If you like cats, you must also like Pluto.",
-      meta: undefined,
-    })
-  }
-  return errors
-}
+//   if (values.pet === "cat" && values.planet !== "pluto") {
+//     errors.push({
+//       fieldName: null,
+//       message: "If you like cats, you must also like Pluto.",
+//       meta: undefined,
+//     })
+//   }
+//   return errors
+// }
 
 export default () => (
   <Form
     submitHandler={submitHandler}
-    validators={[
-      {tag: "synchronous", id: "0", fields: null, validator: syncValidator},
-    ]}
     initialValues={{name: "", human: false, planet: "__unset__"}}
     render={formAPI => (
       <form onSubmit={formAPI.submit}>
@@ -176,7 +173,10 @@ const Submit = props => {
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
-      <button type="submit">{label}</button>
+      <button type="submit">
+        {label}
+        {formAPI.getPendingSubmit() === null ? "" : "..."}
+      </button>
       {invalid && <Errors errors={errors} />}
     </div>
   )

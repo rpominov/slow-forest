@@ -9,13 +9,17 @@ import type {
   SubmitHandler,
   PendingSubmit,
   ResolvedSubmit,
-  Validator,
+  SyncValidator,
+  AsyncValidator,
   FormErrorProcessed,
   FormError,
   ErrorSource,
-  PendingValidation,
-  ResolvedValidation,
+  ValueSnapshot,
+  AsyncValidationRequestPending,
+  AsyncValidationRequestRunning,
+  AsyncValidationRequestResolved,
 } from "./types"
+
 import {CancellationSourceShim} from "./cancellation"
 
 type Props<Value, SubmitMeta, ErrorMeta> = {|
@@ -23,28 +27,24 @@ type Props<Value, SubmitMeta, ErrorMeta> = {|
   initialValues?: Values<Value>,
   submitHandler?: SubmitHandler<Value, SubmitMeta, ErrorMeta>,
   afterSubmit?: (FormAPI<Value, SubmitMeta, ErrorMeta>) => void,
-  validators?: $ReadOnlyArray<Validator<Value, ErrorMeta>>,
-  hasValueChanged?: (
-    fieldName: string,
-    oldSnapshot: $ReadOnly<{|value: Value, time: Time|}>,
-    newSnapshot: $ReadOnly<{|value: Value, time: Time|}>,
-  ) => boolean,
+  syncValidator?: SyncValidator<Value, ErrorMeta>,
+  asyncValidator?: AsyncValidator<Value, SubmitMeta, ErrorMeta>,
 |}
 
 type State<Value, SubmitMeta, ErrorMeta> = {|
-  initialValues: Values<Value>,
   initializationTime: Time,
-  currentValues: Values<Value>,
-  fieldUpdateTime: Values<Time>,
-  isTouched: Values<boolean>,
-  pendingSubmit: PendingSubmit<Value> | null,
-  resolvedSubmit: ResolvedSubmit<Value, SubmitMeta, ErrorMeta> | null,
-  errors: $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>>,
-  pendingValidations: $ReadOnly<{[string]: PendingValidation<Value> | void}>,
-  resolvedValidations: $ReadOnly<{
-    [string]: ResolvedValidation<Value, ErrorMeta> | void,
-  }>,
+  values: $ReadOnlyArray<ValueSnapshot<Value>>,
+  touchedFields: $ReadOnlyArray<string>,
+  pendingSubmit: PendingSubmit | null,
+  resolvedSubmit: ResolvedSubmit<SubmitMeta, ErrorMeta> | null,
+  pendingValidationRequests: $ReadOnlyArray<AsyncValidationRequestPending>,
+  runningValidationRequests: $ReadOnlyArray<AsyncValidationRequestRunning>,
+  resolvedValidationRequests: $ReadOnlyArray<
+    AsyncValidationRequestResolved<ErrorMeta>,
+  >,
 |}
+
+type StateUpdater<S> = (state: S) => $Shape<S>
 
 export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
   Props<Value, SubmitMeta, ErrorMeta>,
@@ -52,75 +52,94 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
 > {
   api: FormAPI<Value, SubmitMeta, ErrorMeta>
   state: State<Value, SubmitMeta, ErrorMeta>
-  _submitCancellationSource: CancellationSourceShim | null
-  _validationCancellationSources: {
-    [string]: CancellationSourceShim | void,
-  }
 
   constructor(props: Props<Value, SubmitMeta, ErrorMeta>) {
     super(props)
+
+    const initializationTime = getTime()
+
     const initialValues = props.initialValues || {}
-    const validators = props.validators || []
-
-    const time = getTime()
-
-    const state = {
-      initialValues,
-      initializationTime: time,
-      currentValues: initialValues,
-      fieldUpdateTime: {},
-      isTouched: {},
-      pendingSubmit: null,
-      resolvedSubmit: null,
-      pendingValidations: {},
-      resolvedValidations: {},
-      errors: [],
-    }
+    const values = Object.keys(initialValues).map(fieldName => ({
+      fieldName,
+      value: initialValues[fieldName],
+      time: initializationTime,
+      isPersistent: true,
+      isInitial: true,
+    }))
 
     this.state = {
-      ...state,
-      ...this._runSynchronousValidators(state),
+      initializationTime,
+      values,
+      touchedFields: [],
+      pendingSubmit: null,
+      resolvedSubmit: null,
+      pendingValidationRequests: [],
+      runningValidationRequests: [],
+      resolvedValidationRequests: [],
     }
 
     this.api = new FormAPI(this)
-    this._submitCancellationSource = null
-    this._validationCancellationSources = {}
   }
 
-  _processError(
-    error: FormError<ErrorMeta>,
-    time: Time,
-    values: Values<Value>,
-    source: ErrorSource,
-  ): FormErrorProcessed<Value, ErrorMeta> {
-    const {fieldName} = error
-    return {
-      ...error,
-      source,
-      valueSnapshot:
-        fieldName === null
-          ? {time, fieldName, values}
-          : {time, fieldName, value: values[fieldName]},
-    }
-  }
-
-  _hasValueChanged(
+  _getLatestSnapshot(
     fieldName: string,
-    oldTime: Time,
-    newTime: Time,
-    oldValue: Value,
-    newValue: Value,
-  ): boolean {
-    const {hasValueChanged} = this.props
+    time?: Time,
+    state: State<Value, SubmitMeta, ErrorMeta> = this.state,
+  ): ValueSnapshot<Value> | null {
+    return (
+      state.values.find(
+        snapshot =>
+          snapshot.fieldName === fieldName &&
+          (time === undefined || snapshot.time.count <= time.count),
+      ) || null
+    )
+  }
 
-    if (hasValueChanged === undefined) {
-      return oldTime.count < newTime.count
+  _forEachSnapshotInReverse(
+    fn: (ValueSnapshot<Value>) => void,
+    state: State<Value, SubmitMeta, ErrorMeta> = this.state,
+  ) {
+    for (let i = state.values.length - 1; i >= 0; i--) {
+      fn(state.values[i])
     }
+  }
 
-    return hasValueChanged(
-      fieldName,
-      {time: oldTime, value: oldValue},
-      {time: newTime, value: newValue},
+  _persistCurrentValues(
+    state: State<Value, SubmitMeta, ErrorMeta> = this.state,
+  ): $Shape<State<Value, SubmitMeta, ErrorMeta>> {
+    return {
+      values: state.values.map(snapshot => ({...snapshot, isPersistent: true})),
+    }
+  }
+
+  _getValue(fieldName: string, time?: Time): Value | void {
+    const snapshot = this._getLatestSnapshot(fieldName, time)
+    return snapshot ? snapshot.value : undefined
+  }
+
+  _setValue(fieldName: string, value: Value): void {
+    this.setState(state => ({
+      values: [
+        {
+          fieldName,
+          isPersistent: false,
+          isInitial: false,
+          time: getTime(),
+          value,
+        },
+        ...state.values.filter(
+          snapshot => snapshot.fieldName !== fieldName || snapshot.isPersistent,
+        ),
+      ],
+    }))
+  }
+
+  _setTouched(fieldName: string, isTouched: boolean): void {
+    this.setState(
+      state =>
+        state.touchedFields.includes(fieldName)
+          ? {}
+          : {touchedFields: [...state.touchedFields, fieldName]},
     )
   }
 
@@ -131,158 +150,29 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     }
   }
 
-  _updateErrorsForValidator(
-    currentErrors: $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>>,
-    newErrors: $ReadOnlyArray<FormError<ErrorMeta>>,
-    validator: Validator<Value, ErrorMeta>,
-    validationTime: Time,
-    validatedValues: Values<Value>,
-  ): $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>> {
-    return [
-      ...currentErrors.filter(
-        e => e.source.type !== "validator" || e.source.id !== validator.id,
-      ),
-      ...newErrors.map(error =>
-        this._processError(error, validationTime, validatedValues, {
-          type: "validator",
-          id: validator.id,
-        }),
-      ),
-    ]
-  }
-
-  isValidatorRelatedToField(
-    validator: Validator<Value, ErrorMeta>,
-    fieldName: string,
-  ): boolean {
-    if (validator.fields === null) {
-      return true
-    }
-
-    if (Array.isArray(validator.fields)) {
-      return validator.fields.includes(fieldName)
-    }
-
-    return validator.fields(fieldName)
-  }
-
-  runValidator(validatorId: string): Promise<void> {
-    const validator = (this.props.validators || []).find(
-      validator => validator.id === validatorId,
-    )
-
-    if (validator === undefined) {
-      throw new Error("TODO: error message")
-    }
-
-    if (validator.tag === "synchronous") {
-      return new Promise(resolve => {
-        this.setState(
-          this._runSynchronousValidators(this.state, undefined, validatorId),
-          resolve,
-        )
-      })
-    }
-
-    const {currentValues, pendingValidations} = this.state
-
-    if (this._validationCancellationSources[validatorId] !== undefined) {
-      this._validationCancellationSources[validatorId].cancel()
-      this._validationCancellationSources[validatorId] = undefined
-    }
-
-    const startTime = getTime()
-
-    this.setState({
-      pendingValidations: {
-        ...pendingValidations,
-        [validatorId]: {startTime, values: currentValues},
-      },
-    })
-
-    const cancellationSource = (this._validationCancellationSources[
-      validatorId
-    ] = new CancellationSourceShim())
-
-    const validatorFunction = validator.validator
-
-    return validatorFunction(currentValues, cancellationSource.token).then(
-      newErrors => {
-        const {pendingValidations, resolvedValidations, errors} = this.state
-
-        const pendingValidation = pendingValidations[validatorId]
-        if (
-          pendingValidation === undefined ||
-          pendingValidation.startTime.count !== startTime.count
-        ) {
-          return
-        }
-
-        const cancellationSource = this._validationCancellationSources[
-          validatorId
-        ]
-
-        // Can't happen, we need this check only for Flow
-        if (cancellationSource === undefined) {
-          throw new Error("TODO: error message")
-        }
-
-        cancellationSource.close()
-        this._validationCancellationSources[validatorId] = undefined
-
-        // Promised resolved to undefined although validation wasn't canceled
-        if (newErrors === undefined) {
-          this.setState({
-            pendingValidations: {
-              ...pendingValidations,
-              [validatorId]: undefined,
-            },
-          })
-          throw new TypeError("TODO: error message")
-        }
-
-        this.setState({
-          pendingValidations: {
-            ...pendingValidations,
-            [validatorId]: undefined,
-          },
-          resolvedValidations: {
-            ...resolvedValidations,
-            [validatorId]: {
-              ...pendingValidation,
-              endTime: getTime(),
-              errors: newErrors,
-            },
-          },
-          errors: this._updateErrorsForValidator(
-            errors,
-            newErrors,
-            validator,
-            pendingValidation.startTime,
-            pendingValidation.values,
-          ),
-        })
-      },
-    )
-  }
-
-  submit(): Promise<void> {
+  _submit(): Promise<void> {
     const {submitHandler} = this.props
-    const {currentValues} = this.state
 
-    this.cancelSubmit()
+    this._cancelSubmit()
 
     if (!submitHandler) {
       return Promise.resolve()
     }
 
     const startTime = getTime()
-    this.setState({pendingSubmit: {startTime, values: currentValues}})
-
-    this._submitCancellationSource = new CancellationSourceShim()
-    return submitHandler(this.api, this._submitCancellationSource.token).then(
+    const _cancellationSource = new CancellationSourceShim()
+    const pendingSubmit = {
+      startTime,
+      _cancellationSource,
+      cancellationToken: _cancellationSource.token,
+    }
+    this.setState(state => ({
+      ...this._persistCurrentValues(state),
+      pendingSubmit,
+    }))
+    return submitHandler(this.api, pendingSubmit.cancellationToken).then(
       result => {
-        const {pendingSubmit, resolvedSubmit, errors} = this.state
+        const {pendingSubmit, resolvedSubmit} = this.state
 
         if (
           pendingSubmit === null ||
@@ -291,13 +181,7 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
           return
         }
 
-        // Can't happen, we need this check only for Flow
-        if (this._submitCancellationSource === null) {
-          throw new Error("TODO: error message")
-        }
-
-        this._submitCancellationSource.close()
-        this._submitCancellationSource = null
+        pendingSubmit._cancellationSource.close()
 
         // Promised resolved to undefined although submit wasn't canceled
         if (result === undefined) {
@@ -309,22 +193,10 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
           {
             pendingSubmit: null,
             resolvedSubmit: {
-              ...pendingSubmit,
+              startTime: pendingSubmit.startTime,
               endTime: getTime(),
               result,
             },
-            errors: errors.filter(e => e.source !== "submit").concat(
-              result.errors.map(error =>
-                this._processError(
-                  error,
-                  pendingSubmit.startTime,
-                  pendingSubmit.values,
-                  {
-                    type: "submit",
-                  },
-                ),
-              ),
-            ),
           },
           this._afterSubmit,
         )
@@ -332,139 +204,28 @@ export default class Form<Value, SubmitMeta, ErrorMeta> extends React.Component<
     )
   }
 
-  cancelSubmit(): void {
+  _cancelSubmit(): void {
     const {pendingSubmit} = this.state
-
     if (pendingSubmit === null) {
       return
     }
-
     this.setState({pendingSubmit: null})
-
-    // Can't happen, we need this check only for Flow
-    if (this._submitCancellationSource === null) {
-      throw new Error("TODO: error message")
-    }
-
-    this._submitCancellationSource.cancel()
-    this._submitCancellationSource = null
+    pendingSubmit._cancellationSource.cancel()
   }
 
-  getValues(): Values<Value> {
-    return this.state.currentValues
-  }
-
-  _runSynchronousValidators(
-    state: State<Value, SubmitMeta, ErrorMeta>,
-    fieldName?: string,
-    validatorId?: string,
-  ): $Shape<State<Value, SubmitMeta, ErrorMeta>> {
-    const {currentValues} = state
-    const time = getTime()
-    const validators = this.props.validators || []
-    return validators.reduce(
-      (partialState, validator) => {
-        if (validator.tag === "asynchronous") {
-          return partialState
-        }
-        if (
-          fieldName !== undefined &&
-          !this.isValidatorRelatedToField(validator, fieldName)
-        ) {
-          return partialState
-        }
-        if (validatorId !== undefined && validator.id === validatorId) {
-          return partialState
-        }
-        const newErrors = validator.validator(currentValues)
-        return {
-          errors: this._updateErrorsForValidator(
-            partialState.errors,
-            newErrors,
-            validator,
-            time,
-            currentValues,
-          ),
-          resolvedValidations: {
-            ...partialState.resolvedValidations,
-            [validator.id]: {
-              startTime: time,
-              endTime: time,
-              values: currentValues,
-              errors: newErrors,
-            },
-          },
-        }
-      },
-      {errors: state.errors, resolvedValidations: state.resolvedValidations},
-    )
-  }
-
-  setValue(fieldName: string, newValue: Value): void {
-    return this.setState(state => {
-      const time = getTime()
-      const currentValues = {...state.currentValues, [fieldName]: newValue}
-      const fieldUpdateTime = {...state.fieldUpdateTime, [fieldName]: time}
-      return {
-        currentValues,
-        fieldUpdateTime,
-        ...this._runSynchronousValidators({...state, currentValues}, fieldName),
+  _getValues(time?: Time): Values<Value> {
+    const result = {}
+    this._forEachSnapshotInReverse(snapshot => {
+      if (time === undefined || snapshot.time.count <= time.count) {
+        result[snapshot.fieldName] = snapshot.value
       }
     })
+    return result
   }
 
-  setTouched(fieldName: string, isTouched: boolean): void {
-    this.setState({
-      isTouched: {...this.state.isTouched, [fieldName]: isTouched},
-    })
-  }
-
-  getValueUpdateTime(fieldName: string): Time {
-    return (
-      this.state.fieldUpdateTime[fieldName] || this.state.initializationTime
-    )
-  }
-
-  isErrorOutdated(error: FormErrorProcessed<Value, ErrorMeta>): boolean {
-    const {valueSnapshot} = error
-    const {currentValues} = this.state
-
-    if (valueSnapshot.fieldName === null) {
-      return Object.keys(currentValues).some(fieldName =>
-        this._hasValueChanged(
-          fieldName,
-          valueSnapshot.time,
-          this.getValueUpdateTime(fieldName),
-          valueSnapshot.values[fieldName],
-          currentValues[fieldName],
-        ),
-      )
-    }
-
-    return this._hasValueChanged(
-      valueSnapshot.fieldName,
-      valueSnapshot.time,
-      this.getValueUpdateTime(valueSnapshot.fieldName),
-      valueSnapshot.value,
-      currentValues[valueSnapshot.fieldName],
-    )
-  }
-
-  getErrors(
-    fieldName: string | null | void,
-    includeOutdated: boolean,
-  ): $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>> {
-    const {errors} = this.state
-
-    return errors.filter(error => {
-      if (fieldName !== undefined && error.fieldName !== fieldName) {
-        return false
-      }
-      if (!includeOutdated && this.isErrorOutdated(error)) {
-        return false
-      }
-      return true
-    })
+  _getValueUpdateTime(fieldName: string): Time {
+    const snapshot = this._getLatestSnapshot(fieldName)
+    return snapshot === null ? this.state.initializationTime : snapshot.time
   }
 
   render() {
