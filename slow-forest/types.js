@@ -1,51 +1,47 @@
 // @flow
 
 import FormApi from "./FormApi"
-import {CancellationTokenShim, CancellationSourceShim} from "./cancellation"
+import {CancellationTokenShim} from "./cancellation"
 
 export type Time = $ReadOnly<{|time: number, count: number|}>
 
-export type Values<Value> = $ReadOnly<{[k: string]: Value}>
+export type Values<V> = $ReadOnly<{[k: string]: V}>
 
-export type ValueSnapshot<Value> = $ReadOnly<{|
+export type ValueSnapshot<V> = $ReadOnly<{|
   time: Time,
   fieldName: string,
-  value: Value | void,
+  value: V,
   isPersistent: boolean,
-  isInitial: boolean,
 |}>
 
-export type FormError<ErrorMeta> = $ReadOnly<{|
-  fieldNames: $ReadOnlyArray<string> | "all",
+export type FormError<EM> = $ReadOnly<{|
+  fieldNames: $ReadOnlyArray<string> | "unknown",
   message: string,
-  meta: ErrorMeta,
+  meta: EM,
 |}>
 
-export type ErrorSource<Value> =
+export type ErrorSource<V> =
   | $ReadOnly<{|type: "synchronous"|}>
   | $ReadOnly<{|type: "submit"|}>
   | $ReadOnly<{|
       type: "asynchronous",
       validationKind: string,
-      appliedToFields: $ReadOnlyArray<string> | "all",
+      appliedToFields: $ReadOnlyArray<string> | "unknown",
     |}>
 
-export type FormErrorProcessed<Value, ErrorMeta> = $ReadOnly<{|
-  ...FormError<ErrorMeta>,
-  source: ErrorSource<Value>,
+export type FormErrorProcessed<V, EM> = $ReadOnly<{|
+  ...FormError<EM>,
+  source: ErrorSource<V>,
 |}>
 
-export type SyncValidator<Value, ErrorMeta> = (
-  Values<Value>,
-) => $ReadOnlyArray<FormError<ErrorMeta>>
+export type SyncValidator<V, EM> = (Values<V>) => $ReadOnlyArray<FormError<EM>>
 
 export type AsyncValidationRequestPending = $ReadOnly<{|
   status: "pending",
   requestTime: Time,
   cancellationToken: CancellationTokenShim,
-  _cancellationSource: CancellationSourceShim,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "all",
+  fieldNames: $ReadOnlyArray<string> | "unknown",
 |}>
 
 export type AsyncValidationRequestRunning = $ReadOnly<{|
@@ -53,49 +49,47 @@ export type AsyncValidationRequestRunning = $ReadOnly<{|
   requestTime: Time,
   startTime: Time,
   cancellationToken: CancellationTokenShim,
-  _cancellationSource: CancellationSourceShim,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "all",
+  fieldNames: $ReadOnlyArray<string> | "unknown",
 |}>
 
-export type AsyncValidationRequestResolved<ErrorMeta> = $ReadOnly<{|
+export type AsyncValidationRequestResolved<EM> = $ReadOnly<{|
   status: "resolved",
   requestTime: Time,
   startTime: Time,
   endTime: Time,
-  errors: Array<FormError<ErrorMeta>>,
+  errors: Array<FormError<EM>>,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "all",
+  fieldNames: $ReadOnlyArray<string> | "unknown",
 |}>
 
-export type AsyncValidationRequest<ErrorMeta> =
+export type AsyncValidationRequest<EM> =
   | AsyncValidationRequestPending
   | AsyncValidationRequestRunning
-  | AsyncValidationRequestResolved<ErrorMeta>
+  | AsyncValidationRequestResolved<EM>
 
-export type AsyncValidator<Value, SubmitMeta, ErrorMeta> = (
-  FormApi<Value, SubmitMeta, ErrorMeta>,
+export type AsyncValidator<V, SM, EM> = (
+  FormApi<V, SM, EM>,
   $ReadOnlyArray<AsyncValidationRequestPending>,
-) => $ReadOnlyArray<Promise<$ReadOnlyArray<FormError<ErrorMeta>>>>
+) => $ReadOnlyArray<Promise<$ReadOnlyArray<FormError<EM>> | void>>
 
-export type SubmitResult<SubmitMeta, ErrorMeta> = $ReadOnly<{|
-  errors: $ReadOnlyArray<FormError<ErrorMeta>>,
-  meta: SubmitMeta,
+export type SubmitResult<SM, EM> = $ReadOnly<{|
+  errors: $ReadOnlyArray<FormError<EM>>,
+  meta: SM,
 |}>
 
-export type SubmitHandler<Value, SubmitMeta, ErrorMeta> = (
-  FormApi<Value, SubmitMeta, ErrorMeta>,
+export type SubmitHandler<V, SM, EM> = (
+  FormApi<V, SM, EM>,
   CancellationTokenShim,
-) => Promise<SubmitResult<SubmitMeta, ErrorMeta> | void>
+) => Promise<SubmitResult<SM, EM> | void>
 
-export type PendingSubmit = $ReadOnly<{|
+export type RunningSubmit = $ReadOnly<{|
   startTime: Time,
   cancellationToken: CancellationTokenShim,
-  _cancellationSource: CancellationSourceShim,
 |}>
 
-export type ResolvedSubmit<SubmitMeta, ErrorMeta> = $ReadOnly<{|
+export type ResolvedSubmit<SM, EM> = $ReadOnly<{|
   startTime: Time,
   endTime: Time,
-  result: SubmitResult<SubmitMeta, ErrorMeta>,
+  result: SubmitResult<SM, EM>,
 |}>

@@ -125,6 +125,11 @@ export default class MyApp extends App {
               display: block;
               margin: 2px 0;
             }
+
+            .validation-state {
+              font-size: 14px;
+              color: #939393;
+            }
           `}</style>
 
           <style jsx>{`

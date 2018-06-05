@@ -15,7 +15,7 @@
   * [formApi.isTouched(fieldName)](#formapiistouchedfieldname)
   * [formApi.submit()](#formapisubmit)
   * [formApi.cancelSubmit()](#formapicancelsubmit)
-  * [formApi.getPendingSubmit()](#formapigetpendingsubmit)
+  * [formApi.getRunningSubmit()](#formapigetpendingsubmit)
   * [formApi.getResolvedSubmit()](#formapigetresolvedsubmit)
   * [formApi.reinitialize(initialValues)](#formapireinitializeinitialvalues)
 * [Form props](#form-props)
@@ -197,7 +197,7 @@ how submitting works.
 
 TODO.
 
-### formApi.getPendingSubmit()
+### formApi.getRunningSubmit()
 
 TODO.
 

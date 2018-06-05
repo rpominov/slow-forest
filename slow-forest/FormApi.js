@@ -7,25 +7,24 @@ import type {
   FormErrorProcessed,
   ResolvedSubmit,
   Time,
-  PendingSubmit,
+  RunningSubmit,
   SubmitResult,
   FormError,
   AsyncValidationRequest,
 } from "./types"
 
-export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
-  _form: Form<Value, SubmitMeta, ErrorMeta>
+export default class FormAPI<V, SM, EM> {
+  _form: Form<V, SM, EM>
 
-  constructor(form: Form<Value, SubmitMeta, ErrorMeta>) {
+  constructor(form: Form<V, SM, EM>) {
     this._form = form
   }
 
-  getInitialValues: () => Values<Value> = () => {
-    // TODO
-    return {}
+  getInitialValues: () => Values<V> = () => {
+    return this._form._getValues(this._form.state.initializationTime)
   }
 
-  reinitialize: (initialValues?: Values<Value>) => void = initialValues => {
+  reinitialize: (initialValues?: Values<V>) => void = initialValues => {
     // TODO
   }
 
@@ -33,15 +32,15 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form.state.initializationTime
   }
 
-  getValue: (fieldName: string) => Value | void = fieldName => {
+  getValue: (fieldName: string) => V | void = fieldName => {
     return this._form._getValue(fieldName)
   }
 
-  getAllValues: () => Values<Value> = () => {
+  getAllValues: () => Values<V> = () => {
     return this._form._getValues()
   }
 
-  setValue: (fieldName: string, newValue: Value) => void = (
+  setValue: (fieldName: string, newValue: V) => void = (
     fieldName,
     newValue,
   ) => {
@@ -64,14 +63,11 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form._cancelSubmit()
   }
 
-  getPendingSubmit: () => PendingSubmit | null = () => {
-    return this._form.state.pendingSubmit
+  getRunningSubmit: () => RunningSubmit | null = () => {
+    return this._form.state.runningSubmit
   }
 
-  getResolvedSubmit: () => ResolvedSubmit<
-    SubmitMeta,
-    ErrorMeta,
-  > | null = () => {
+  getResolvedSubmit: () => ResolvedSubmit<SM, EM> | null = () => {
     return this._form.state.resolvedSubmit
   }
 
@@ -86,24 +82,38 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
     return this._form.state.touchedFields.includes(fieldName)
   }
 
+  isAnyTouched: () => boolean = () => {
+    return this._form.state.touchedFields.length > 0
+  }
+
   getErrors: (
-    fieldName: string | null,
+    fieldName: string,
     includeOutdated?: boolean,
-  ) => $ReadOnlyArray<FormErrorProcessed<Value, ErrorMeta>> = (
+  ) => $ReadOnlyArray<FormErrorProcessed<V, EM>> = (
     fieldName,
     includeOutdated,
   ) => {
-    // TODO
-    return []
+    return this._form
+      ._getAllErrors(Boolean(includeOutdated))
+      .filter(
+        error =>
+          error.fieldNames !== "unknown" &&
+          error.fieldNames.includes(fieldName),
+      )
+  }
+
+  getUnknownFieldErrors: (
+    includeOutdated?: boolean,
+  ) => $ReadOnlyArray<FormErrorProcessed<V, EM>> = includeOutdated => {
+    return this._form
+      ._getAllErrors(Boolean(includeOutdated))
+      .filter(error => error.fieldNames === "unknown")
   }
 
   getAllErrors: (
     includeOutdated?: boolean,
-  ) => $ReadOnlyArray<
-    FormErrorProcessed<Value, ErrorMeta>,
-  > = includeOutdated => {
-    // TODO
-    return []
+  ) => $ReadOnlyArray<FormErrorProcessed<V, EM>> = includeOutdated => {
+    return this._form._getAllErrors(Boolean(includeOutdated))
   }
 
   getKnownFieldNames: () => $ReadOnlyArray<string> = () => {
@@ -112,24 +122,50 @@ export default class FormAPI<Value, SubmitMeta, ErrorMeta> {
 
   requestAsyncValidation: (
     validationKind: string,
-    fieldNames: $ReadOnlyArray<string> | "all",
-  ) => void // TODO
+    fieldNames: $ReadOnlyArray<string> | "unknown",
+  ) => void = (validationKind, fieldNames) => {
+    this._form._requestAsyncValidation(validationKind, fieldNames)
+  }
 
-  getAsyncValidationRequests: () => $ReadOnlyArray<
-    AsyncValidationRequest<ErrorMeta>,
-  > // TODO
+  // TODO: return Promise<isCancelled>
+  // TODO: a way to perform validation for 'unknown' fields
+  performAsyncValidations: (fieldName: string) => Promise<void> = fieldName => {
+    return this._form._performAsyncValidations(fieldName)
+  }
 
-  performAsyncValidations: (fieldName: string) => Promise<boolean> // TODO
-  isAwaitingValidation: (fieldName: string) => boolean // TODO
-  isValidating: (fieldName: string) => boolean // TODO
+  isAwaitingValidation: (fieldName: string) => boolean = fieldName => {
+    return this._form.state.pendingValidationRequests.some(
+      request =>
+        request.fieldNames !== "all" && request.fieldNames.includes(fieldName),
+    )
+  }
+
+  isValidating: (fieldName: string) => boolean = fieldName => {
+    return this._form.state.runningValidationRequests.some(
+      request =>
+        request.fieldNames !== "all" && request.fieldNames.includes(fieldName),
+    )
+  }
 
   hasChangedSinceSubmit: (fieldName: string) => boolean = fieldName => {
-    // TODO
-    return false
+    const {resolvedSubmit} = this._form.state
+
+    if (resolvedSubmit === null) {
+      return false
+    }
+
+    return this._form.state.values.some(
+      snapshot =>
+        snapshot.fieldName === fieldName &&
+        snapshot.time.count > resolvedSubmit.startTime.count,
+    )
   }
 
   hasChangedSinceInitialization: (fieldName: string) => boolean = fieldName => {
-    // TODO
-    return false
+    return this._form.state.values.some(
+      snapshot =>
+        snapshot.fieldName === fieldName &&
+        snapshot.time.count > this._form.state.initializationTime.count,
+    )
   }
 }

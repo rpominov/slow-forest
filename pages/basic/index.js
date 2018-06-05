@@ -28,37 +28,68 @@ async function submitHandler(formApi) {
   return {errors: [], meta: null}
 }
 
-// function syncValidator(values) {
-//   const errors = []
+function syncValidator(values) {
+  const errors = []
 
-//   if (values.name === "") {
-//     errors.push({
-//       fieldName: "name",
-//       message: "Name is required.",
-//       meta: undefined,
-//     })
-//   }
+  if (values.name === "") {
+    errors.push({
+      fieldNames: ["name"],
+      message: "Name is required.",
+      meta: undefined,
+    })
+  }
 
-//   if (values.pet === "cat" && values.planet !== "pluto") {
-//     errors.push({
-//       fieldName: null,
-//       message: "If you like cats, you must also like Pluto.",
-//       meta: undefined,
-//     })
-//   }
-//   return errors
-// }
+  if (values.pet === "cat" && values.planet !== "pluto") {
+    errors.push({
+      fieldNames: "unknown",
+      message: "If you like cats, you must also like Pluto.",
+      meta: undefined,
+    })
+  }
+  return errors
+}
+
+function asyncValidator(formApi, requests) {
+  return requests.map(request => {
+    if (request.validationKind === "valid-name") {
+      if (request.fieldNames === "unknown" || request.fieldNames.length !== 1) {
+        throw new Error("invalid validation request")
+      }
+
+      const errors =
+        formApi.getValue(request.fieldNames[0]) === ""
+          ? [
+              {
+                fieldNames: ["name"],
+                message: "Name is required (async).",
+                meta: undefined,
+              },
+            ]
+          : []
+      return sleep(1000).then(() => errors)
+    }
+
+    throw new Error("unknown validationKind")
+  })
+}
 
 export default () => (
   <Form
     submitHandler={submitHandler}
     initialValues={{name: "", human: false, planet: "__unset__"}}
-    render={formAPI => (
-      <form onSubmit={formAPI.submit}>
-        <TextField formAPI={formAPI} name="name" label="Name" />
+    syncValidator={syncValidator}
+    asyncValidator={asyncValidator}
+    render={formApi => (
+      <form onSubmit={formApi.submit}>
+        <TextField
+          formApi={formApi}
+          name="name"
+          label="Name"
+          validate={["valid-name"]}
+        />
 
         <RadioButtons
-          formAPI={formAPI}
+          formApi={formApi}
           name="pet"
           label="Pet preference"
           options={[
@@ -67,10 +98,10 @@ export default () => (
           ]}
         />
 
-        <Checkbox formAPI={formAPI} name="human" label="human" />
+        <Checkbox formApi={formApi} name="human" label="human" />
 
         <Select
-          formAPI={formAPI}
+          formApi={formApi}
           name="planet"
           label="Favorite planet"
           options={[
@@ -81,37 +112,53 @@ export default () => (
           ]}
         />
 
-        <Submit formAPI={formAPI} label="Submit" />
+        <Submit formApi={formApi} label="Submit" />
       </form>
     )}
   />
 )
 
 const TextField = props => {
-  const {formAPI, name, label} = props
-  const value = formAPI.getValue(name)
-  const onChange = e => formAPI.setValue(name, e.target.value)
-  const errors = formAPI.getErrors(name)
+  const {formApi, name, label, validate} = props
+  const value = formApi.getValue(name)
+  const onChange = e => {
+    formApi.setValue(name, e.target.value)
+    if (validate !== undefined) {
+      validate.forEach(validationKind => {
+        formApi.requestAsyncValidation(validationKind, [name])
+      })
+    }
+  }
+  const onBlur = () => {
+    formApi.setTouched(name, true)
+    formApi.performAsyncValidations(name)
+  }
+  const errors = formApi.getErrors(name)
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
       <label>{label}:</label>
-      <input type="text" value={value} onChange={onChange} />
-      {invalid && <Errors errors={errors} />}
+      <input type="text" value={value} onChange={onChange} onBlur={onBlur} />
+      {invalid && formApi.isTouched(name) && <Errors errors={errors} />}
+      <ValidationState formApi={formApi} name={name} />
     </div>
   )
 }
 
 const RadioButtons = props => {
-  const {formAPI, name, label, options} = props
-  const errors = formAPI.getErrors(name)
+  const {formApi, name, label, options} = props
+  const errors = formApi.getErrors(name)
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
       <label>{label}:</label>
       {options.map(option => {
-        const checked = formAPI.getValue(name) === option.value
-        const onChange = () => formAPI.setValue(name, option.value)
+        const checked = formApi.getValue(name) === option.value
+        const onChange = () => {
+          formApi.setValue(name, option.value)
+          formApi.setTouched(name, true)
+          formApi.performAsyncValidations(name)
+        }
         return (
           <label className="radioGroup" key={option.value}>
             <input
@@ -124,16 +171,20 @@ const RadioButtons = props => {
           </label>
         )
       })}
-      {invalid && <Errors errors={errors} />}
+      {invalid && formApi.isTouched(name) && <Errors errors={errors} />}
     </div>
   )
 }
 
 const Checkbox = props => {
-  const {formAPI, name, label} = props
-  const checked = formAPI.getValue(name)
-  const onChange = e => formAPI.setValue(name, e.target.checked)
-  const errors = formAPI.getErrors(name)
+  const {formApi, name, label} = props
+  const checked = formApi.getValue(name)
+  const onChange = e => {
+    formApi.setValue(name, e.target.checked)
+    formApi.setTouched(name, true)
+    formApi.performAsyncValidations(name)
+  }
+  const errors = formApi.getErrors(name)
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
@@ -141,43 +192,49 @@ const Checkbox = props => {
         <input type="checkbox" checked={checked} onChange={onChange} />
         {label}
       </label>
-      {invalid && <Errors errors={errors} />}
+      {invalid && formApi.isTouched(name) && <Errors errors={errors} />}
     </div>
   )
 }
 
 const Select = props => {
-  const {formAPI, name, label, options} = props
-  const value = formAPI.getValue(name)
-  const onChange = e => formAPI.setValue(name, e.target.value)
-  const errors = formAPI.getErrors(name)
+  const {formApi, name, label, options} = props
+  const value = formApi.getValue(name)
+  const onChange = e => {
+    formApi.setValue(name, e.target.value)
+  }
+  const onBlur = () => {
+    formApi.setTouched(name, true)
+    formApi.performAsyncValidations(name)
+  }
+  const errors = formApi.getErrors(name)
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
       <label>{label}:</label>
-      <select value={value} onChange={onChange}>
+      <select value={value} onChange={onChange} onBlur={onBlur}>
         {options.map(o => (
           <option value={o.value} key={o.value}>
             {o.label}
           </option>
         ))}
       </select>
-      {invalid && <Errors errors={errors} />}
+      {invalid && formApi.isTouched(name) && <Errors errors={errors} />}
     </div>
   )
 }
 
 const Submit = props => {
-  const {formAPI, label} = props
-  const errors = formAPI.getErrors(null)
+  const {formApi, label} = props
+  const errors = formApi.getUnknownFieldErrors()
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
       <button type="submit">
         {label}
-        {formAPI.getPendingSubmit() === null ? "" : "..."}
+        {formApi.getRunningSubmit() === null ? "" : "..."}
       </button>
-      {invalid && <Errors errors={errors} />}
+      {invalid && formApi.isAnyTouched() && <Errors errors={errors} />}
     </div>
   )
 }
@@ -187,5 +244,14 @@ const Errors = props => {
     <ul className="errors">
       {props.errors.map((e, i) => <li key={i}>{e.message}</li>)}
     </ul>
+  )
+}
+
+const ValidationState = props => {
+  return (
+    <p className="validation-state">
+      {props.formApi.isAwaitingValidation(props.name) && "awaiting validation"}
+      {props.formApi.isValidating(props.name) && "checking..."}
+    </p>
   )
 }
