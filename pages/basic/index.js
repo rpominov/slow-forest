@@ -41,7 +41,7 @@ function syncValidator(values) {
 
   if (values.pet === "cat" && values.planet !== "pluto") {
     errors.push({
-      fieldNames: "unknown",
+      fieldNames: {unknownField: true},
       message: "If you like cats, you must also like Pluto.",
       meta: undefined,
     })
@@ -52,12 +52,15 @@ function syncValidator(values) {
 function asyncValidator(formApi, requests) {
   return requests.map(request => {
     if (request.validationKind === "valid-name") {
-      if (request.fieldNames === "unknown" || request.fieldNames.length !== 1) {
+      if (
+        !Array.isArray(request.applyToFields) ||
+        request.applyToFields.length !== 1
+      ) {
         throw new Error("invalid validation request")
       }
 
       const errors =
-        formApi.getValue(request.fieldNames[0]) === ""
+        formApi.getValue(request.applyToFields[0]) === ""
           ? [
               {
                 fieldNames: ["name"],
@@ -130,7 +133,7 @@ const TextField = props => {
     }
   }
   const onBlur = () => {
-    formApi.setTouched(name, true)
+    formApi.setTouched(name)
     formApi.performAsyncValidations(name)
   }
   const errors = formApi.getErrors(name)
@@ -156,7 +159,7 @@ const RadioButtons = props => {
         const checked = formApi.getValue(name) === option.value
         const onChange = () => {
           formApi.setValue(name, option.value)
-          formApi.setTouched(name, true)
+          formApi.setTouched(name)
           formApi.performAsyncValidations(name)
         }
         return (
@@ -181,7 +184,7 @@ const Checkbox = props => {
   const checked = formApi.getValue(name)
   const onChange = e => {
     formApi.setValue(name, e.target.checked)
-    formApi.setTouched(name, true)
+    formApi.setTouched(name)
     formApi.performAsyncValidations(name)
   }
   const errors = formApi.getErrors(name)
@@ -204,7 +207,7 @@ const Select = props => {
     formApi.setValue(name, e.target.value)
   }
   const onBlur = () => {
-    formApi.setTouched(name, true)
+    formApi.setTouched(name)
     formApi.performAsyncValidations(name)
   }
   const errors = formApi.getErrors(name)
@@ -226,7 +229,7 @@ const Select = props => {
 
 const Submit = props => {
   const {formApi, label} = props
-  const errors = formApi.getUnknownFieldErrors()
+  const errors = formApi.getErrors({unknownField: true})
   const invalid = errors.length > 0
   return (
     <div className={"inputGroup" + (invalid ? " invalid" : "")}>
@@ -234,7 +237,8 @@ const Submit = props => {
         {label}
         {formApi.getRunningSubmit() === null ? "" : "..."}
       </button>
-      {invalid && formApi.isAnyTouched() && <Errors errors={errors} />}
+      {invalid &&
+        formApi.getTouchedFields().length !== 0 && <Errors errors={errors} />}
     </div>
   )
 }

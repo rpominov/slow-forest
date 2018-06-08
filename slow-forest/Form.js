@@ -1,10 +1,8 @@
 // @flow
 
 import * as React from "react"
-import getTime from "./getTime"
 import FormAPI from "./FormApi"
 import type {
-  Time,
   Values,
   SubmitHandler,
   RunningSubmit,
@@ -19,6 +17,8 @@ import type {
   AsyncValidationRequestRunning,
   AsyncValidationRequestResolved,
   AsyncValidationRequest,
+  FieldList,
+  FieldIdentifier,
 } from "./types"
 
 import {CancellationTokenShim} from "./cancellation"
@@ -33,7 +33,7 @@ type Props<V, SM, EM> = {|
 |}
 
 type State<V, SM, EM> = {|
-  initializationTime: Time,
+  initializationTime: number,
   values: $ReadOnlyArray<ValueSnapshot<V>>,
   touchedFields: $ReadOnlyArray<string>,
   runningSubmit: RunningSubmit | null,
@@ -53,11 +53,14 @@ export default class Form<V, SM, EM> extends React.Component<
 > {
   api: FormAPI<V, SM, EM>
   state: State<V, SM, EM>
+  _timeCounter: number
 
   constructor(props: Props<V, SM, EM>) {
     super(props)
 
-    const initializationTime = getTime()
+    this._timeCounter = 0
+
+    const initializationTime = this._getTime()
 
     const initialValues = props.initialValues || {}
     const values = Object.keys(initialValues).map(fieldName => ({
@@ -81,16 +84,21 @@ export default class Form<V, SM, EM> extends React.Component<
     this.api = new FormAPI(this)
   }
 
+  _getTime(): number {
+    this._timeCounter++
+    return this._timeCounter
+  }
+
   _getLatestSnapshot(
     fieldName: string,
-    time?: Time,
+    time?: number,
     state: State<V, SM, EM> = this.state,
   ): ValueSnapshot<V> | null {
     return (
       state.values.find(
         snapshot =>
           snapshot.fieldName === fieldName &&
-          (time === undefined || snapshot.time.count <= time.count),
+          (time === undefined || snapshot.time <= time),
       ) || null
     )
   }
@@ -112,7 +120,7 @@ export default class Form<V, SM, EM> extends React.Component<
     }
   }
 
-  _getValue(fieldName: string, time?: Time): V | void {
+  _getValue(fieldName: string, time?: number): V | void {
     const snapshot = this._getLatestSnapshot(fieldName, time)
     return snapshot ? snapshot.value : undefined
   }
@@ -123,7 +131,7 @@ export default class Form<V, SM, EM> extends React.Component<
         {
           fieldName,
           isPersistent: false,
-          time: getTime(),
+          time: this._getTime(),
           value,
         },
         ...state.values.filter(
@@ -158,7 +166,7 @@ export default class Form<V, SM, EM> extends React.Component<
       return Promise.resolve()
     }
 
-    const startTime = getTime()
+    const startTime = this._getTime()
     const runningSubmit = {
       startTime,
       cancellationToken: new CancellationTokenShim(),
@@ -171,10 +179,7 @@ export default class Form<V, SM, EM> extends React.Component<
       result => {
         const {runningSubmit, resolvedSubmit} = this.state
 
-        if (
-          runningSubmit === null ||
-          runningSubmit.startTime.count !== startTime.count
-        ) {
+        if (runningSubmit === null || runningSubmit.startTime !== startTime) {
           return
         }
 
@@ -191,7 +196,7 @@ export default class Form<V, SM, EM> extends React.Component<
             runningSubmit: null,
             resolvedSubmit: {
               startTime: runningSubmit.startTime,
-              endTime: getTime(),
+              endTime: this._getTime(),
               result,
             },
           },
@@ -210,64 +215,59 @@ export default class Form<V, SM, EM> extends React.Component<
     runningSubmit.cancellationToken._cancel()
   }
 
-  _getValues(time?: Time): Values<V> {
+  _getValues(time?: number): Values<V> {
     const result = {}
     this._forEachSnapshotInReverse(snapshot => {
-      if (time === undefined || snapshot.time.count <= time.count) {
+      if (time === undefined || snapshot.time <= time) {
         result[snapshot.fieldName] = snapshot.value
       }
     })
     return result
   }
 
-  _getValueUpdateTime(fieldName: string): Time {
+  _getValueUpdateTime(fieldName: string): number {
     const snapshot = this._getLatestSnapshot(fieldName)
     return snapshot === null ? this.state.initializationTime : snapshot.time
   }
 
   _requestAsyncValidation(
     validationKind: string,
-    fieldNames: $ReadOnlyArray<string> | "unknown",
+    applyToFields: FieldList,
   ): void {
     this.setState(state => {
       return {
         pendingValidationRequests: [
           {
             status: "pending",
-            requestTime: getTime(),
+            requestTime: this._getTime(),
             validationKind,
-            fieldNames,
+            applyToFields,
             cancellationToken: new CancellationTokenShim(),
           },
           // TODO:
           //   we should cancel the token when removing
           //   also we should remove and cancell a running request if exists
           ...state.pendingValidationRequests.filter(
-            request => !sameKindAndFields(request, validationKind, fieldNames),
+            request =>
+              !sameKindAndFields(request, validationKind, applyToFields),
           ),
         ],
       }
     })
   }
 
-  _performAsyncValidations(fieldName: string): Promise<void> {
+  // TODO: _persistCurrentValues
+  _performAsyncValidations(fieldName: FieldIdentifier): Promise<void> {
     const {asyncValidator} = this.props
 
     if (!asyncValidator) {
       throw new Error("TODO: error message")
     }
 
-    function isRelevantRequest(request) {
-      return (
-        request.fieldNames !== "unknown" &&
-        request.fieldNames.includes(fieldName)
-      )
-    }
-
-    const startTime = getTime()
+    const startTime = this._getTime()
 
     const relevantRequests = this.state.pendingValidationRequests.filter(
-      isRelevantRequest,
+      request => fieldListsIncludes(request.applyToFields, fieldName),
     )
 
     const newRunningRequests = relevantRequests.map(r => ({
@@ -276,11 +276,11 @@ export default class Form<V, SM, EM> extends React.Component<
       requestTime: r.requestTime,
       cancellationToken: r.cancellationToken,
       validationKind: r.validationKind,
-      fieldNames: r.fieldNames,
+      applyToFields: r.applyToFields,
     }))
 
     const newPendingRequests = this.state.pendingValidationRequests.filter(
-      r => !isRelevantRequest(r),
+      request => !fieldListsIncludes(request.applyToFields, fieldName),
     )
 
     this.setState({
@@ -315,10 +315,10 @@ export default class Form<V, SM, EM> extends React.Component<
             status: "resolved",
             requestTime: request.requestTime,
             startTime: request.startTime,
-            endTime: getTime(),
+            endTime: this._getTime(),
             errors: errors.map(e => e),
             validationKind: request.validationKind,
-            fieldNames: request.fieldNames,
+            applyToFields: request.applyToFields,
           }
 
           const newResolvedRequests = [
@@ -328,7 +328,7 @@ export default class Form<V, SM, EM> extends React.Component<
                 !sameKindAndFields(
                   r,
                   request.validationKind,
-                  request.fieldNames,
+                  request.applyToFields,
                 ),
             ),
           ]
@@ -342,17 +342,20 @@ export default class Form<V, SM, EM> extends React.Component<
     ).then(() => undefined)
   }
 
-  _valuesChangedSince(values: $ReadOnlyArray<string> | "unknown", time: Time) {
+  _haveValuesChangedSince(values: FieldList, time: number): boolean {
+    // FIXME:
+    //   we assume here that if `values` is UnknownField
+    //   than any change counts, but should we?
     return this.state.values.some(
       snapshot =>
-        snapshot.time.count > time.count &&
-        (values === "unknown" || values.includes(snapshot.fieldName)),
+        snapshot.time > time &&
+        (!Array.isArray(values) || values.includes(snapshot.fieldName)),
     )
   }
 
   _getAllErrors(
     includeOutdated: boolean,
-  ): $ReadOnlyArray<FormErrorProcessed<V, EM>> {
+  ): $ReadOnlyArray<FormErrorProcessed<EM>> {
     const {syncValidator} = this.props
     const {
       resolvedSubmit,
@@ -361,32 +364,50 @@ export default class Form<V, SM, EM> extends React.Component<
       runningValidationRequests,
     } = this.state
 
-    const synchronous = (syncValidator
-      ? syncValidator(this._getValues())
-      : []
-    ).map(error => ({...error, source: {type: "synchronous"}}))
+    const time = this._getTime()
 
-    const submit = (resolvedSubmit
-      ? resolvedSubmit.result.errors.filter(
-          error =>
-            includeOutdated ||
-            !this._valuesChangedSince(
-              error.fieldNames,
-              resolvedSubmit.startTime,
-            ),
-        )
+    const synchronous = syncValidator
+      ? syncValidator(this._getValues()).map(error => ({
+          ...error,
+          source: {type: "synchronous"},
+          time,
+        }))
       : []
-    ).map(error => ({...error, source: {type: "submit"}}))
+
+    const submit = resolvedSubmit
+      ? resolvedSubmit.result.errors
+          .filter(
+            error =>
+              includeOutdated ||
+              !this._haveValuesChangedSince(
+                error.fieldNames,
+                resolvedSubmit.startTime,
+              ),
+          )
+          .map(error => ({
+            ...error,
+            source: {type: "submit"},
+            time: resolvedSubmit.startTime,
+          }))
+      : []
 
     const asynchronous = (includeOutdated
       ? resolvedValidationRequests
       : resolvedValidationRequests.filter(
           request =>
             !pendingValidationRequests.some(r =>
-              sameKindAndFields(r, request.validationKind, request.fieldNames),
+              sameKindAndFields(
+                r,
+                request.validationKind,
+                request.applyToFields,
+              ),
             ) &&
             !runningValidationRequests.some(r =>
-              sameKindAndFields(r, request.validationKind, request.fieldNames),
+              sameKindAndFields(
+                r,
+                request.validationKind,
+                request.applyToFields,
+              ),
             ),
         )
     )
@@ -396,8 +417,9 @@ export default class Form<V, SM, EM> extends React.Component<
           source: {
             type: "asynchronous",
             validationKind: request.validationKind,
-            appliedToFields: request.fieldNames,
+            appliedToFields: request.applyToFields,
           },
+          time: request.startTime,
         })),
       )
       .reduce((a, b) => [...a, ...b], [])
@@ -436,18 +458,27 @@ function isEqualArray<T>(a: $ReadOnlyArray<T>, b: $ReadOnlyArray<T>): boolean {
 function sameKindAndFields<EM>(
   validationRequest: AsyncValidationRequest<EM>,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "unknown",
+  applyToFields: FieldList,
 ): boolean {
-  if (validationRequest.validationKind !== validationKind) {
-    return false
-  }
-
-  if (fieldNames === "unknown") {
-    return validationRequest.fieldNames === "unknown"
-  }
-
   return (
-    validationRequest.fieldNames !== "unknown" &&
-    isEqualArray(validationRequest.fieldNames, fieldNames)
+    validationRequest.validationKind === validationKind &&
+    sameFieldLists(applyToFields, validationRequest.applyToFields)
   )
+}
+
+export function sameFieldLists(a: FieldList, b: FieldList): boolean {
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return isEqualArray(a, b)
+  }
+  return !Array.isArray(a) && !Array.isArray(b)
+}
+
+export function fieldListsIncludes(
+  list: FieldList,
+  value: FieldIdentifier,
+): boolean {
+  if (Array.isArray(list) && typeof value === "string") {
+    return list.includes(value)
+  }
+  return !Array.isArray(list) && typeof value !== "string"
 }

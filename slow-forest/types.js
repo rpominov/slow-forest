@@ -3,64 +3,67 @@
 import FormApi from "./FormApi"
 import {CancellationTokenShim} from "./cancellation"
 
-export type Time = $ReadOnly<{|time: number, count: number|}>
-
 export type Values<V> = $ReadOnly<{[k: string]: V}>
 
+export type UnknownField = $ReadOnly<{unknownField: true}>
+export type FieldList = $ReadOnlyArray<string> | UnknownField
+export type FieldIdentifier = string | UnknownField
+
 export type ValueSnapshot<V> = $ReadOnly<{|
-  time: Time,
+  time: number,
   fieldName: string,
   value: V,
   isPersistent: boolean,
 |}>
 
 export type FormError<EM> = $ReadOnly<{|
-  fieldNames: $ReadOnlyArray<string> | "unknown",
+  fieldNames: FieldList,
   message: string,
   meta: EM,
 |}>
 
-export type ErrorSource<V> =
+export type ErrorSource =
   | $ReadOnly<{|type: "synchronous"|}>
   | $ReadOnly<{|type: "submit"|}>
   | $ReadOnly<{|
       type: "asynchronous",
       validationKind: string,
-      appliedToFields: $ReadOnlyArray<string> | "unknown",
+      appliedToFields: FieldList,
     |}>
 
-export type FormErrorProcessed<V, EM> = $ReadOnly<{|
+export type FormErrorProcessed<EM> = $ReadOnly<{|
   ...FormError<EM>,
-  source: ErrorSource<V>,
+  time: number,
+  source: ErrorSource,
 |}>
 
 export type SyncValidator<V, EM> = (Values<V>) => $ReadOnlyArray<FormError<EM>>
 
 export type AsyncValidationRequestPending = $ReadOnly<{|
   status: "pending",
-  requestTime: Time,
+  requestTime: number,
   cancellationToken: CancellationTokenShim,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "unknown",
+  applyToFields: FieldList,
 |}>
 
 export type AsyncValidationRequestRunning = $ReadOnly<{|
   status: "running",
-  requestTime: Time,
-  startTime: Time,
+  requestTime: number,
+  startTime: number,
   cancellationToken: CancellationTokenShim,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "unknown",
+  applyToFields: FieldList,
 |}>
 
 export type AsyncValidationRequestResolved<EM> = $ReadOnly<{|
   status: "resolved",
-  requestTime: Time,
-  startTime: Time,
-  endTime: Time,
+  requestTime: number,
+  startTime: number,
+  endTime: number,
   errors: Array<FormError<EM>>,
   validationKind: string,
-  fieldNames: $ReadOnlyArray<string> | "unknown",
+  applyToFields: FieldList,
 |}>
 
 export type AsyncValidationRequest<EM> =
@@ -84,12 +87,12 @@ export type SubmitHandler<V, SM, EM> = (
 ) => Promise<SubmitResult<SM, EM> | void>
 
 export type RunningSubmit = $ReadOnly<{|
-  startTime: Time,
+  startTime: number,
   cancellationToken: CancellationTokenShim,
 |}>
 
 export type ResolvedSubmit<SM, EM> = $ReadOnly<{|
-  startTime: Time,
-  endTime: Time,
+  startTime: number,
+  endTime: number,
   result: SubmitResult<SM, EM>,
 |}>

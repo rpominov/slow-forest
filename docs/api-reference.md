@@ -71,9 +71,6 @@ We use some types in multiple places and to not repeat them let's introduce
 aliases here:
 
 ```js
-// The object that we use to represent time
-type Time = {time: number, count: number}
-
 // You provide errors to the library in this format
 type FormError<ErrorMeta> = {
   fieldName: string | null,
@@ -87,8 +84,8 @@ type FormErrorProcessed<Value, ErrorMeta> = {
   ...FormError<ErrorMeta>,
   source: {type: "submit"} | {type: "validator", id: string},
   valueSnapshot:
-    | {time: Time, fieldName: null, values: {[fieldName: string]: Value}}
-    | {time: Time, fieldName: string, value: Value},
+    | {time: number, fieldName: null, values: {[fieldName: string]: Value}}
+    | {time: number, fieldName: string, value: Value},
 }
 ```
 
