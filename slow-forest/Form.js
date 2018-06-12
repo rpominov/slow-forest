@@ -38,6 +38,8 @@ type State<V, SM, EM> = {|
   touchedFields: $ReadOnlyArray<string>,
   runningSubmit: RunningSubmit | null,
   resolvedSubmit: ResolvedSubmit<SM, EM> | null,
+
+  // TODO: use maps (getValidationRequestId(request) -> request) instead of arrays
   pendingValidationRequests: $ReadOnlyArray<AsyncValidationRequestPending>,
   runningValidationRequests: $ReadOnlyArray<AsyncValidationRequestRunning>,
   resolvedValidationRequests: $ReadOnlyArray<
@@ -60,18 +62,16 @@ export default class Form<V, SM, EM> extends React.Component<
 
     this._timeCounter = 0
 
-    const initializationTime = this._getTime()
-
     const initialValues = props.initialValues || {}
     const values = Object.keys(initialValues).map(fieldName => ({
       fieldName,
       value: initialValues[fieldName],
-      time: initializationTime,
+      time: this._getTime(),
       isPersistent: true,
     }))
 
     this.state = {
-      initializationTime,
+      initializationTime: this._getTime(),
       values,
       touchedFields: [],
       runningSubmit: null,
@@ -84,8 +84,12 @@ export default class Form<V, SM, EM> extends React.Component<
     this.api = new FormAPI(this)
   }
 
-  _getTime(): number {
+  _getNewTime(): number {
     this._timeCounter++
+    return this._timeCounter
+  }
+
+  _getTime(): number {
     return this._timeCounter
   }
 
@@ -131,7 +135,7 @@ export default class Form<V, SM, EM> extends React.Component<
         {
           fieldName,
           isPersistent: false,
-          time: this._getTime(),
+          time: this._getNewTime(),
           value,
         },
         ...state.values.filter(
@@ -141,7 +145,7 @@ export default class Form<V, SM, EM> extends React.Component<
     }))
   }
 
-  _setTouched(fieldName: string, isTouched: boolean): void {
+  _setTouched(fieldName: string): void {
     this.setState(
       state =>
         state.touchedFields.includes(fieldName)
@@ -166,7 +170,7 @@ export default class Form<V, SM, EM> extends React.Component<
       return Promise.resolve()
     }
 
-    const startTime = this._getTime()
+    const startTime = this._getNewTime()
     const runningSubmit = {
       startTime,
       cancellationToken: new CancellationTokenShim(),
@@ -196,7 +200,7 @@ export default class Form<V, SM, EM> extends React.Component<
             runningSubmit: null,
             resolvedSubmit: {
               startTime: runningSubmit.startTime,
-              endTime: this._getTime(),
+              endTime: this._getNewTime(),
               result,
             },
           },
@@ -234,19 +238,24 @@ export default class Form<V, SM, EM> extends React.Component<
     validationKind: string,
     applyToFields: FieldList,
   ): void {
+    // FIXME:
+    //   if we already have same validation pending,
+    //   should we just keep the old one (don't do anything)
+    //   that also will help with formApi.getValidationRequestTime
+    //   should we also use time of running validation as pending validation time then?
     this.setState(state => {
       return {
         pendingValidationRequests: [
           {
             status: "pending",
-            requestTime: this._getTime(),
+            requestTime: this._getNewTime(),
             validationKind,
             applyToFields,
             cancellationToken: new CancellationTokenShim(),
           },
           // TODO:
           //   we should cancel the token when removing
-          //   also we should remove and cancell a running request if exists
+          //   also we should remove and cancel a running request if exists
           ...state.pendingValidationRequests.filter(
             request =>
               !sameKindAndFields(request, validationKind, applyToFields),
@@ -256,7 +265,6 @@ export default class Form<V, SM, EM> extends React.Component<
     })
   }
 
-  // TODO: _persistCurrentValues
   _performAsyncValidations(fieldName: FieldIdentifier): Promise<void> {
     const {asyncValidator} = this.props
 
@@ -264,11 +272,15 @@ export default class Form<V, SM, EM> extends React.Component<
       throw new Error("TODO: error message")
     }
 
-    const startTime = this._getTime()
-
     const relevantRequests = this.state.pendingValidationRequests.filter(
       request => fieldListsIncludes(request.applyToFields, fieldName),
     )
+
+    if (relevantRequests.length === 0) {
+      return Promise.resolve()
+    }
+
+    const startTime = this._getNewTime()
 
     const newRunningRequests = relevantRequests.map(r => ({
       status: "running",
@@ -284,6 +296,7 @@ export default class Form<V, SM, EM> extends React.Component<
     )
 
     this.setState({
+      ...this._persistCurrentValues(),
       pendingValidationRequests: newPendingRequests,
       runningValidationRequests: [
         ...this.state.runningValidationRequests,
@@ -315,7 +328,7 @@ export default class Form<V, SM, EM> extends React.Component<
             status: "resolved",
             requestTime: request.requestTime,
             startTime: request.startTime,
-            endTime: this._getTime(),
+            endTime: this._getNewTime(),
             errors: errors.map(e => e),
             validationKind: request.validationKind,
             applyToFields: request.applyToFields,
@@ -346,6 +359,8 @@ export default class Form<V, SM, EM> extends React.Component<
     // FIXME:
     //   we assume here that if `values` is UnknownField
     //   than any change counts, but should we?
+    //   probably yes, because this is the only way to tell if it's outdated anyway,
+    //   and user can always set includeOutdated=true if they want these errors
     return this.state.values.some(
       snapshot =>
         snapshot.time > time &&
@@ -353,9 +368,7 @@ export default class Form<V, SM, EM> extends React.Component<
     )
   }
 
-  _getAllErrors(
-    includeOutdated: boolean,
-  ): $ReadOnlyArray<FormErrorProcessed<EM>> {
+  _getAllErrors(): $ReadOnlyArray<FormErrorProcessed<EM>> {
     const {syncValidator} = this.props
     const {
       resolvedSubmit,
@@ -371,46 +384,23 @@ export default class Form<V, SM, EM> extends React.Component<
           ...error,
           source: {type: "synchronous"},
           time,
+          isOutdated: false,
         }))
       : []
 
     const submit = resolvedSubmit
-      ? resolvedSubmit.result.errors
-          .filter(
-            error =>
-              includeOutdated ||
-              !this._haveValuesChangedSince(
-                error.fieldNames,
-                resolvedSubmit.startTime,
-              ),
-          )
-          .map(error => ({
-            ...error,
-            source: {type: "submit"},
-            time: resolvedSubmit.startTime,
-          }))
+      ? resolvedSubmit.result.errors.map(error => ({
+          ...error,
+          source: {type: "submit"},
+          time: resolvedSubmit.startTime,
+          isOutdated: this._haveValuesChangedSince(
+            error.fieldNames,
+            resolvedSubmit.startTime,
+          ),
+        }))
       : []
 
-    const asynchronous = (includeOutdated
-      ? resolvedValidationRequests
-      : resolvedValidationRequests.filter(
-          request =>
-            !pendingValidationRequests.some(r =>
-              sameKindAndFields(
-                r,
-                request.validationKind,
-                request.applyToFields,
-              ),
-            ) &&
-            !runningValidationRequests.some(r =>
-              sameKindAndFields(
-                r,
-                request.validationKind,
-                request.applyToFields,
-              ),
-            ),
-        )
-    )
+    const asynchronous = resolvedValidationRequests
       .map(request =>
         request.errors.map(error => ({
           ...error,
@@ -420,6 +410,21 @@ export default class Form<V, SM, EM> extends React.Component<
             appliedToFields: request.applyToFields,
           },
           time: request.startTime,
+          isOutdated:
+            pendingValidationRequests.some(r =>
+              sameKindAndFields(
+                r,
+                request.validationKind,
+                request.applyToFields,
+              ),
+            ) ||
+            runningValidationRequests.some(r =>
+              sameKindAndFields(
+                r,
+                request.validationKind,
+                request.applyToFields,
+              ),
+            ),
         })),
       )
       .reduce((a, b) => [...a, ...b], [])

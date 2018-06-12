@@ -11,6 +11,7 @@ import type {
   AsyncValidationRequest,
   FieldList,
   FieldIdentifier,
+  AsyncValidationStatus,
 } from "./types"
 
 export default class FormAPI<V, SM, EM> {
@@ -20,27 +21,40 @@ export default class FormAPI<V, SM, EM> {
     this._form = form
   }
 
+  reinitialize: (initialValues?: Values<V>) => void = initialValues => {
+    // TODO
+  }
+
   getTimeCurrent: () => number = () => {
     return this._form._getTime()
   }
+
   getTimeInitialization: () => number = () => {
     return this._form.state.initializationTime
   }
+
   getTimeResolvedSubmit: () => number | null = () => {
     const submit = this._form.state.resolvedSubmit
     return submit && submit.startTime
   }
+
   getTimeLatestSubmit: () => number | null = () => {
     const submit =
       this._form.state.runningSubmit || this._form.state.resolvedSubmit
     return submit && submit.startTime
   }
 
-  reinitialize: (initialValues?: Values<V>) => void = initialValues => {
-    // TODO
+  getTimeAsyncValidationRequested: (fieldName: FieldIdentifier) => number | null // TODO
+
+  getTimeValueUpdate: (fieldName?: string) => number = fieldName => {
+    if (fieldName === undefined) {
+      // TODO: return time of the latest update of any field
+      return 0
+    }
+    return this._form._getValueUpdateTime(fieldName)
   }
 
-  persistValues: () => number = () => {
+  createValuesSnapshot: () => number = () => {
     this._form.setState(this._form._persistCurrentValues())
     return this.getTimeCurrent()
   }
@@ -61,12 +75,6 @@ export default class FormAPI<V, SM, EM> {
     newValue,
   ) => {
     return this._form._setValue(fieldName, newValue)
-  }
-
-  // TODO: make fieldName optional and allow to get time of any latest update?
-  // in any case make sure it's consistent with isTouched/isAllTouched
-  getUpdateTime: (fieldName: string) => number = fieldName => {
-    return this._form._getValueUpdateTime(fieldName)
   }
 
   getFieldsUpdatedSince: (
@@ -103,12 +111,13 @@ export default class FormAPI<V, SM, EM> {
     return this._form.state.runningSubmit
   }
 
+  // "finished"?
   getResolvedSubmit: () => ResolvedSubmit<SM, EM> | null = () => {
     return this._form.state.resolvedSubmit
   }
 
   setTouched: (fieldName: string) => void = (fieldName, isTouched) => {
-    this._form._setTouched(fieldName, true)
+    this._form._setTouched(fieldName)
   }
 
   isTouched: (fieldName: string) => boolean = fieldName => {
@@ -126,10 +135,13 @@ export default class FormAPI<V, SM, EM> {
     fieldName,
     includeOutdated,
   ) => {
-    const errors = this._form._getAllErrors(Boolean(includeOutdated))
-    return fieldName === null || fieldName === undefined
+    const errors = this._form._getAllErrors()
+    const errors1 = Boolean(includeOutdated)
       ? errors
-      : errors.filter(error => fieldListsIncludes(error.fieldNames, fieldName))
+      : errors.filter(error => !error.isOutdated)
+    return fieldName === null || fieldName === undefined
+      ? errors1
+      : errors1.filter(error => fieldListsIncludes(error.fieldNames, fieldName))
   }
 
   getKnownFieldNames: () => $ReadOnlyArray<string> = () => {
@@ -143,31 +155,64 @@ export default class FormAPI<V, SM, EM> {
     this._form._requestAsyncValidation(validationKind, applyToFields)
   }
 
+  /** NEW idea */
+  getAsyncValidationStatus: (
+    validationKind: string,
+    applyToFields: FieldList,
+  ) => AsyncValidationStatus<EM> | null // TODO
+
+  getAllAsyncValidationStatuses: () => Array<AsyncValidationStatus<EM>> // TODO
+
+  cancelAsyncValidation: (
+    validationKind: string,
+    applyToFields: FieldList,
+  ) => void // TODO
+  /** NEW idea */
+
   // TODO: return Promise<isCancelled>
-  // TODO: make fieldName optional and allow to run all validations? usefull before submit
+  // TODO?:
+  //   should result promise also wait for running related validations?
+  //   what about ones that spawn a bit later?
   //
-  // should result promise also wait for running related validations (that we didn't cancel)?
-  // what about ones that may spawn a bit later?
-  performAsyncValidations: (
-    fieldName: FieldIdentifier,
+  // maybe take requests as argument?
+  // then it could be used in combination with getPendingAsyncValidationRequests
+  //
+  // we wouldn't be able to wait for running related validations then,
+  // but we could have another method for that
+  //
+  // although then we'll have a method accepting fieldName again
+  runAsyncValidations: (
+    fieldName?: FieldIdentifier,
   ) => Promise<void> = fieldName => {
+    if (fieldName === undefined) {
+      // TODO: run all requested validations
+      return Promise.resolve()
+    }
     return this._form._performAsyncValidations(fieldName)
   }
 
-  // TODO: a way to get time when field started to wait for validation
-  // (e.g. last time when it was validated)
-  isAwaitingValidation: (fieldName: FieldIdentifier) => boolean = fieldName => {
+  // TODO?: fieldName optional
+  // TODO?: getPendingAsyncValidationRequests
+  isAsyncValidationPending: (
+    fieldName: FieldIdentifier,
+  ) => boolean = fieldName => {
     return this._form.state.pendingValidationRequests.some(request =>
       fieldListsIncludes(request.applyToFields, fieldName),
     )
   }
 
-  isValidating: (fieldName: FieldIdentifier) => boolean = fieldName => {
+  // TODO?: fieldName optional
+  // TODO?: getRunningAsyncValidationRequests
+  // TODO?: then also getFinishedAsyncValidationRequests
+  isAsyncValidationRunning: (
+    fieldName: FieldIdentifier,
+  ) => boolean = fieldName => {
     return this._form.state.runningValidationRequests.some(request =>
       fieldListsIncludes(request.applyToFields, fieldName),
     )
   }
 
   // TODO: direct access to validation requests of all statuses?
+  // TODO: cancelValidation
   // TODO: initialValidationRequests prop?
 }

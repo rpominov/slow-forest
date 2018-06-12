@@ -35,9 +35,27 @@ export type FormErrorProcessed<EM> = $ReadOnly<{|
   ...FormError<EM>,
   time: number,
   source: ErrorSource,
+  isOutdated: boolean,
 |}>
 
 export type SyncValidator<V, EM> = (Values<V>) => $ReadOnlyArray<FormError<EM>>
+
+// m?
+export type AsyncValidationStatus<EM> = $ReadOnly<{|
+  validationKind: string,
+  applyToFields: FieldList,
+  pending: $ReadOnly<{|
+    requestTime: number,
+    startTime: number | null,
+    cancellationToken: CancellationTokenShim,
+  |}> | null,
+  finished: $ReadOnly<{|
+    requestTime: number,
+    startTime: number,
+    endTime: number,
+    errors: Array<FormError<EM>>,
+  |}> | null,
+|}>
 
 export type AsyncValidationRequestPending = $ReadOnly<{|
   status: "pending",
